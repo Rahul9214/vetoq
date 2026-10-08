@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+@theme {
+  --color-obsidian: #101211;
+  --color-graphite: #191d1b;
+  --color-ink: #e7ece8;
+  --color-muted: #adb7b0;
+  --color-line: #424c45;
+  --color-jade: #8eddb4;
+  --color-review: #edbc79;
+  --color-blocked: #e5a177;
+  --color-critical: #ffaca7;
+  --font-sans: "Segoe UI", Arial, sans-serif;
+  --font-mono: Consolas, "Courier New", monospace;
+}
+
+:root {
+  color-scheme: dark;
+  --space-gutter: clamp(1rem, 4vw, 4rem);
+  --radius-panel: 0.375rem;
+}
+
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--color-obsidian);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button,
+a {
+  touch-action: manipulation;
+}
+img,
+svg {
+  max-width: 100%;
+}
+:focus-visible {
+  outline: 3px solid var(--color-jade);
+  outline-offset: 5px;
+}
+::selection {
+  background: var(--color-jade);
+  color: var(--color-obsidian);
+}
+.shell-container {
+  width: min(100% - 2 * var(--space-gutter), 90rem);
+  margin-inline: auto;
+  min-width: 0;
+}
+.brand {
+  font-size: 1.5rem;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+}
+.brand span {
+  margin-left: 0.35rem;
+  color: var(--color-jade);
+}
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+.headline {
+  max-width: 16ch;
+  font-size: clamp(2.35rem, 5.5vw, 5.5rem);
+  font-weight: 650;
+  letter-spacing: -0.045em;
+  line-height: 1.08;
+}
+.intro {
+  max-width: 42ch;
+  color: var(--color-muted);
+  font-size: clamp(1rem, 1.3vw, 1.25rem);
+}
+.foundation-note {
+  max-width: 42rem;
+  padding-left: 1rem;
+  border-left: 2px solid var(--color-line);
+}
+.skip-link {
+  position: fixed;
+  top: 0.75rem;
+  left: 1rem;
+  z-index: 10;
+  transform: translateY(-200%);
+  max-width: calc(100% - 2rem);
+  padding: 0.75rem 1rem;
+  background: var(--color-jade);
+  color: var(--color-obsidian);
+  font-weight: 600;
+}
+.skip-link:focus {
+  transform: translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

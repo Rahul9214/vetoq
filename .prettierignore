@@ -1,0 +1,11 @@
+pnpm-lock.yaml
+uv.lock
+**/uv.lock
+.next/
+node_modules/
+.cache/
+.venv/
+artifacts/
+test-results/
+playwright-report/
+next-env.d.ts
