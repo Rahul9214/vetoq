@@ -1,0 +1,27 @@
+{
+  "name": "vetoq",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.15.1",
+  "engines": {
+    "node": ">=22.20.0 <23",
+    "pnpm": "11.15.1"
+  },
+  "scripts": {
+    "dev:web": "pnpm --filter @vetoq/web dev",
+    "dev:api": "node scripts/api.mjs dev",
+    "verify": "node scripts/verify.mjs",
+    "verify:web": "pnpm --filter @vetoq/web verify",
+    "verify:api": "node scripts/api.mjs verify",
+    "test:browser": "pnpm --filter @vetoq/web test:browser",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:config": "docker compose --env-file .env.example config --quiet",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "browsers:install": "node scripts/browsers.mjs"
+  },
+  "devDependencies": {
+    "prettier": "3.9.9"
+  }
+}

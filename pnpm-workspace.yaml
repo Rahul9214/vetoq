@@ -1,0 +1,9 @@
+packages:
+  - apps/web
+
+saveExact: true
+engineStrict: true
+minimumReleaseAge: 1440
+allowBuilds:
+  esbuild: true
+  unrs-resolver: true

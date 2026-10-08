@@ -1,0 +1,38 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Dependencies and tool caches
+node_modules/
+.pnpm-store/
+.cache/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Builds and verification artifacts
+.next/
+out/
+dist/
+build/
+coverage/
+htmlcov/
+.coverage
+*.tsbuildinfo
+playwright-report/
+test-results/
+artifacts/
+*.log
+
+# Local editor/OS state
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
