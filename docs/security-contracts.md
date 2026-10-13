@@ -1,6 +1,6 @@
-# Security contracts — documentation only
+# Security contracts — Module 002 elaboration
 
-None of these product contracts is implemented in Module 001. They are the Module 002 design constraints.
+Canonical invariants are [SECURITY_INVARIANTS.md](SECURITY_INVARIANTS.md). This file records how the text slice implements them. It does not grant a weaker authority rule. Later formats and external tools require new approved contracts and evidence.
 
 ## Goal Lock
 
@@ -16,7 +16,7 @@ Observed influence labels are presented_to_model, cited_by_model, and used_in_ar
 
 ## Model provider boundary
 
-The planned provider interface accepts versioned structured inference requests and returns validated structured output plus invocation metadata. A provider adapter handles SDK/wire formats, timeout and transport errors, and supported capabilities. Shared domain errors distinguish timeout, unavailable, invalid output, and unsupported capability. No provider SDK type belongs in policy/Goal Lock/guard. No adapter is implemented now. Do not silently fall back to a different provider.
+The provider interface accepts versioned structured inference requests and returns validated structured output plus invocation metadata. The Groq adapter handles the OpenAI-compatible wire format, strict JSON Schema output, timeouts, rate limits, transport failures, invalid output, and evidence-reference validation. Shared domain errors do not expose provider transport types to policy, Goal Lock, or Action Guard. There is no silent fallback.
 
 ## Action Guard
 
@@ -24,10 +24,9 @@ Required inputs: verified principal/workspace; active envelope; registered tool/
 
 Decision order: validate identity/state/schema → apply hard prohibitions and scope → expiry/budgets/data rules → review requirement → exact review validation → private guarded execution.
 
-- ALLOW: exact persisted action may execute through dispatcher.
-- RESTRICT: do not execute this proposal; return narrower scope for a new proposal.
-- HUMAN_REVIEW: persist exact proposal pending authorized review.
-- BLOCK: reject and record reason codes.
+- ALLOW: the exact persisted action may execute through the dispatcher.
+- REVIEW: persist that exact action until a different authorized reviewer approves or rejects it.
+- BLOCK: reject and record reason codes. A reviewer cannot turn a hard prohibition into ALLOW.
 
 Unknown tool/field, invalid approval, unavailable policy, or changed arguments cannot authorize execution. Model recommendations are stored separately from deterministic reasons. Review cannot override a hard prohibition. Approval is digest-bound, expiring, one-time, and subject to current membership and policy at dispatch.
 
@@ -37,6 +36,6 @@ The reference tickets.create adapter persists a real record. Same-tool wrong-wor
 
 Events record actor, run, sequence, type, timestamps, references, versions, and safe reasons. Audit is append-only to application roles during retention, not claimed administrator-proof. Proposed retention: protected source/derived content 24 hours; minimized metadata 30 days. Review expiry, revocation, and cancellation are auditable. Never log secrets, tokens, raw payloads, unrestricted provider output, or chain-of-thought.
 
-## Proposed API errors
+## API errors
 
-Use stable code, safe message, correlation ID, and retryability. Identity failure: 401/403. Cross-workspace object: 404. Version/idempotency conflict: 409. Expired review/content: 410. Oversized body: 413. Invalid input: 422. Rate limit: 429. Required dependency failure: 503. There is no generic public execute_tool endpoint.
+The implemented error contract is [API_CONTRACT.md](API_CONTRACT.md). Expired content is 410. An expired or mismatched review is 409 `review_stale`. There is no generic public execute_tool endpoint.

@@ -1,21 +1,25 @@
 # Product definition and boundaries
 
+**Historical and organizer context.** The canonical product identity, roadmap, and capability registry are [PRODUCT_CONTRACT.md](PRODUCT_CONTRACT.md). This file does not override it.
+
 **VETOQ — Trust the Goal. Verify the Action.**
 
-Selected challenge: ET AI Hackathon: Agentic Edition, presented by Accenture; Problem Statement 2, Agentic Cybersecurity — Prompt Injection Firewall.
+Historical challenge context: ET AI Hackathon: Agentic Edition, presented by Accenture; Problem Statement 2, Agentic Cybersecurity. That event named the problem space as a prompt-injection firewall. VETOQ is an Agent Execution Security Platform, not that product category.
 
 ## Status vocabulary
+
+The capability states IMPLEMENTED, PARTIAL, and PLANNED are defined in [TEST_RELEASE_GATES.md](TEST_RELEASE_GATES.md) and applied only in the registry. The words below are older module language:
 
 - Implemented: behavior present in source and supported by verification.
 - Planned: approved direction, not a runtime capability.
 - Target: desired measurable outcome, not an achieved result.
 - Deferred: intentionally absent from the current module.
 
-Module 001 implements engineering foundations only. No security protection, autonomous business action, model access, or F3/D3 capability is currently implemented.
+Module 001, as of its own completion record, implemented engineering foundations only. Module 002 now implements the text security slice described in [PRODUCT_CONTRACT.md](PRODUCT_CONTRACT.md). F3 and D3 are still not achieved.
 
-## Product thesis (planned)
+## Product thesis
 
-VETOQ protects integrated agent execution: content → reasoning context → observable plan/proposal → tool invocation → side effect. The question is both whether content is suspicious and whether an action stays within what the user actually authorized. AI output is evidence, not authority. Models may classify, interpret, correlate, explain, and propose. Deterministic code owns privileged authorization.
+The locked path and authority rule are in [PRODUCT_CONTRACT.md](PRODUCT_CONTRACT.md) and [SECURITY_INVARIANTS.md](SECURITY_INVARIANTS.md). AI output is evidence, not authority. Models may classify, interpret, correlate, explain, and propose. Deterministic code owns privileged authorization.
 
 Initial audience: teams deploying support-triage agents; initial operator: a person who authorizes one review and one scoped ticket. A later buyer hypothesis is the owner of enterprise agent automation. Buyer demand and business impact have not been measured.
 
@@ -42,7 +46,7 @@ F3/D3 remain evidence-dependent targets. Module 002 starts with text; later sepa
 
 ## Delivery constraints
 
-Official deadline: **11 October 2026, 11:59 PM IST**. Internal freeze: **11 October 2026, 8:00 PM IST**. Leave the remaining time for contingency and submission. Do not substitute a one-day-earlier freeze.
+Historical hackathon deadline: **11 October 2026, 11:59 PM IST**. Historical internal freeze: **11 October 2026, 8:00 PM IST**. Those dates are event history, not the current engineering schedule.
 
 Public event sources: https://economictimes.indiatimes.com/et-spotlight/accenture-ai-hackathon and https://api.unstop.com/hackathons/crp-et-ai-hackathon-agentic-edition-presented-by-accenture-economic-times-1744885 . The detailed PDF governs the supplied F/D definitions.
 

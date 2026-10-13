@@ -2,15 +2,15 @@
 
 **Trust the Goal. Verify the Action.**
 
-An execution-security product being built for **ET AI Hackathon: Agentic Edition, presented by Accenture** — Problem Statement 2: **Agentic Cybersecurity — Prompt Injection Firewall**.
+**Agent Execution Security Platform.** VETOQ governs what autonomous and semi-autonomous agents are allowed to do, not merely what they are allowed to read or generate. **AI output is evidence, not authority.**
 
-VETOQ's thesis is to verify both suspicious inputs and whether an agent's proposed action remains inside the user's authorization. **AI output is evidence, not authority.** Privileged execution will be owned by deterministic policy and an Action Guard.
+The historical ET AI Hackathon context is recorded in [product.md](docs/product.md). It does not define VETOQ as a prompt-injection firewall. The canonical product, security, and architecture rules are in [PRODUCT_CONTRACT.md](docs/PRODUCT_CONTRACT.md).
 
 ## Current status
 
-**Module 001: repository foundation.** The implemented runtime is a neutral responsive application shell and a health-only FastAPI service. PostgreSQL local configuration and engineering checks are provided.
+**Module 002: first security vertical slice.** The runtime accepts a confirmed support-triage goal and synthetic/sanitized untrusted email text, preserves provenance, combines deterministic inspection with real Groq analysis, and sends an exact typed proposal through a provider-independent Action Guard. One authorized `tickets.create` persists and verifies a real PostgreSQL ticket; the same tool targeting another workspace is blocked before any write.
 
-**Not implemented:** prompt-injection detection, Goal Lock runtime, Action Guard, model calls, tools/tickets, business tables, multimodal ingestion, authentication integration, dashboards, or product evaluation. This build does not provide prompt-injection protection. No public deployment or achieved F3/D3 level is claimed.
+Clerk supplies identity while PostgreSQL membership remains server-authoritative. The UI exposes run submission/history, provenance/findings, action status, exact review, and verified ticket outcome using actual API state. Multimodal ingestion, external tools, dashboards, public deployment, and statistically meaningful product evaluation are not implemented. No achieved F3/D3 level is claimed.
 
 The intended coverage remains all nine official attack families and heterogeneous multimodal inputs. F3 requires at least seven detected categories; D3 requires heterogeneous multimodal input with demonstrably high reliability. Claims require reproducible evidence. Module 002's text slice is a starting point, not a reduced final goal.
 
@@ -23,7 +23,7 @@ The intended coverage remains all nine official attack families and heterogeneou
 - Docker with Compose v2 and a running Linux-container engine for local PostgreSQL.
 - Network access for the initial dependency and test-browser downloads.
 
-Use maintained official installers to provision missing tools. Setup never requires Git automation. No model account or API key is required for Module 001.
+Use maintained official installers to provision missing tools. Setup never requires Git automation. Module 002 requires Groq and Clerk development credentials stored only in ignored local environment files.
 
 ## Local setup
 
@@ -34,14 +34,17 @@ pnpm install --frozen-lockfile
 uv sync --locked --directory apps/api
 pnpm browsers:install
 Copy-Item .env.example .env
+Copy-Item .env.example apps/web/.env.local
 ```
 
-Edit the untracked .env and replace the local password in BOTH POSTGRES_PASSWORD and VETOQ_DATABASE_URL. Use URL encoding when needed in a database URL. The example values are placeholders, not credentials. Never commit .env.
+Edit root `.env` and replace every placeholder. Keep only `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, and optional `VETOQ_API_URL` in `apps/web/.env.local`. Configure the same Clerk publishable key in root `.env` for API token verification. Never commit either file.
 
 ```powershell
 pnpm db:config
 pnpm db:up
+pnpm db:migrate
 docker compose ps
+pnpm admin:provision -- --workspace-id 00000000-0000-4000-8000-00000000000a --workspace-name "Demo support" --principal user_from_clerk --role reviewer
 pnpm dev:web
 ```
 
@@ -49,19 +52,29 @@ In a second terminal:
 
 ```powershell
 pnpm dev:api
+pnpm dev:worker
 ```
 
-Open **http://127.0.0.1:3000**. API liveness is **http://127.0.0.1:8000/health/live**; readiness is **http://127.0.0.1:8000/health/ready**. Development servers bind to loopback.
+Open **http://localhost:3000**. API liveness is **http://127.0.0.1:18000/health/live**; readiness is **http://127.0.0.1:18000/health/ready**. Development servers bind to loopback.
+
+The web server deliberately binds to `localhost`, not `127.0.0.1`. Next.js presents middleware request URLs as `localhost`; when the server's own origin is `127.0.0.1`, Clerk's pass-through rewrite looks external and Next.js proxies the request to itself repeatedly until it hangs.
 
 If ports are occupied, set POSTGRES_PORT=55432 and change the database URL to match in your untracked .env. For a different API port, run:
 
 ```powershell
-uv run --locked --directory apps/api uvicorn vetoq.main:create_app --factory --app-dir src --host 127.0.0.1 --port 18000
+$env:VETOQ_API_PORT = "18000"
+pnpm dev:api
+```
+
+Set `VETOQ_API_URL=http://127.0.0.1:18000` in `apps/web/.env.local` before starting or restarting the web server. A signed-in product request fails closed with `database_not_configured` until `VETOQ_DATABASE_URL` is present, PostgreSQL is reachable, and the migration has been applied. Provision only the exact Clerk subject shown by the no-membership state; the development command does not grant access automatically:
+
+```powershell
+pnpm admin:provision -- --workspace-id 00000000-0000-4000-8000-00000000000a --workspace-name "Demo support" --principal user_from_clerk --role reviewer
 ```
 
 Do not stop unrelated services to free these ports.
 
-The shell does not require PostgreSQL. The API can start in development without a database URL, but readiness then returns 503 with database_not_configured. A configured unavailable database returns 503 with database_unavailable. Readiness returns 200 only after SELECT 1 succeeds; no schema or business tables are created.
+The API can start in development without a database URL, but readiness returns 503. Readiness returns 200 only when PostgreSQL is reachable and the exact Alembic revision is applied. Product endpoints require a verified Clerk token and active local membership.
 
 Use pnpm db:down to stop local infrastructure while preserving its volume. Do not delete the volume to fix a configuration problem. Docker's database initialization settings apply to a new data directory; changing the example password does not rotate an existing database's credentials.
 
@@ -73,18 +86,27 @@ pnpm verify
 
 This checks repository formatting; frontend lint, strict types, unit tests, and production build; Python lint/format, strict typing, and tests; then browser validation against the production shell. It exits on failure and does not silently skip browser checks.
 
-The required foundation checks pass in the verified environment. A supplemental full dependency audit still reports one high **development-only** advisory with no published patch; the production-only audit is clean. See [the verification record](docs/modules/001-verification.md) before accepting dependency risk.
+The required Module 002 checks pass in the verified environment. See [the Module 002 verification record](docs/modules/002-verification.md) for exact results, live-provider evidence, audit status, and limitations.
 
 Individual commands:
 
-| Command                                                   | Check                                                                      |
-| --------------------------------------------------------- | -------------------------------------------------------------------------- |
-| pnpm format:check                                         | Prettier on supported source/document/config files                         |
-| pnpm verify:web                                           | ESLint, TypeScript, Vitest, Next.js production build                       |
-| pnpm verify:api                                           | Ruff lint/format, strict mypy, Pytest                                      |
-| pnpm test:browser                                         | Chromium, Firefox, WebKit shell/accessibility/viewport checks; build first |
-| pnpm db:config                                            | Compose validation using the labeled example configuration                 |
-| docker compose exec postgres pg_isready -U vetoq -d vetoq | Actual database readiness after startup                                    |
+| Command                                                   | Check                                                                            |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| pnpm format:check                                         | Prettier on supported source/document/config files                               |
+| pnpm verify:web                                           | ESLint, TypeScript, Vitest, Next.js production build                             |
+| pnpm verify:api                                           | Ruff lint/format, strict mypy, Pytest                                            |
+| pnpm test:browser                                         | Chromium, Firefox, WebKit shell/accessibility/viewport checks; build first       |
+| pnpm verify:groq                                          | Real synthetic-only Groq-to-PostgreSQL smoke; requires `VETOQ_TEST_DATABASE_URL` |
+| pnpm db:config                                            | Compose validation using the labeled example configuration                       |
+| docker compose exec postgres pg_isready -U vetoq -d vetoq | Actual database readiness after startup                                          |
+
+Database integration tests and `pnpm verify:groq` run only when `VETOQ_TEST_DATABASE_URL` is set. They refuse to start unless the database name ends in `_test`, the server reports that same name, and it differs from `VETOQ_DATABASE_URL`. They never fall back to the development database. Create and migrate the disposable database once:
+
+```powershell
+docker compose exec postgres createdb -U vetoq vetoq_test
+$env:VETOQ_DATABASE_URL = "postgresql://vetoq:<local-password>@127.0.0.1:55432/vetoq_test"; pnpm db:migrate; Remove-Item Env:VETOQ_DATABASE_URL
+$env:VETOQ_TEST_DATABASE_URL = "postgresql://vetoq:<local-password>@127.0.0.1:55432/vetoq_test"
+```
 
 pnpm format and uv run --locked --directory apps/api ruff format . deliberately rewrite formatting; verification commands only check it. Dependency caches, browsers, .venv, build output, and reports are ignored.
 
@@ -102,24 +124,22 @@ The Compose profile is **local development only**: PostgreSQL is exposed on loop
 
 ## Architecture direction
 
-Next.js/React/strict TypeScript/Tailwind → FastAPI/Pydantic → PostgreSQL. A later durable runner shares the backend codebase. Model access stays behind a provider interface. Deterministic policy and Action Guard remain independent of providers.
+Next.js/React/strict TypeScript/Tailwind → same-origin Clerk BFF → FastAPI/Pydantic → PostgreSQL. A durable worker shares the backend codebase. Model access stays behind a provider interface. Deterministic policy and Action Guard remain independent of Groq.
 
-SQLAlchemy/Alembic arrive with actual Module 002 persistence. LangGraph, object storage, classifiers, and format parsers remain deferred until justified. There is no Kafka, Kubernetes, Redis, vector store, or microservice platform.
+SQLAlchemy/Alembic own Module 002 persistence. LangGraph, object storage, classifiers, and format parsers remain deferred until justified. There is no Kafka, Kubernetes, Redis, vector store, or microservice platform.
 
 ## Repository map
 
-- apps/web — neutral shell, frontend tooling, shell unit/browser checks.
-- apps/api — health API, validated settings, Python tooling and tests.
+- apps/web — authenticated product UI, same-origin BFF, unit and browser checks.
+- apps/api — health/product API, durable worker, security domain, migration, tests and fixtures.
 - scripts — Windows-compatible verification/development helpers.
 - docs — durable product, architecture, security, design, evaluation, ADR, and module contracts.
 - compose.yaml — local PostgreSQL configuration, no business initialization scripts.
 
 ## Continue safely
 
-Start with [AGENTS.md](AGENTS.md), [handoff](docs/handoff.md), and the active [Module 001 specification](docs/modules/001-foundation.md). [Module 002](docs/modules/002-security-slice.md) is planned and requires separate approval.
-
-Key references: [product](docs/product.md), [architecture](docs/architecture.md), [threat model](docs/threat-model.md), [security contracts](docs/security-contracts.md), [evaluation methodology](docs/evaluation.md), and [design system](docs/design-system.md).
+Start with [AGENTS.md](AGENTS.md), [the product contract](docs/PRODUCT_CONTRACT.md), [handoff](docs/handoff.md), and the active [Module 002 specification](docs/modules/002-security-slice.md). Later modules require separate approval. Engineering commands and environment boundaries are in [ENGINEERING_CONTEXT.md](docs/ENGINEERING_CONTEXT.md).
 
 Git/GitHub are human controlled. Coding agents never stage, commit, push, create/switch branches, or operate the repository lifecycle. They report suggested commit groups.
 
-**Official deadline:** 11 October 2026, 11:59 PM IST. **Internal freeze:** 11 October 2026, 8:00 PM IST.
+The hackathon deadline of 11 October 2026, 11:59 PM IST and the internal freeze of 8:00 PM IST are historical. See [the product contract](docs/PRODUCT_CONTRACT.md).

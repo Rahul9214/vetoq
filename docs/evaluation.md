@@ -1,6 +1,8 @@
-# Evaluation methodology — planned, not results
+# Evaluation methodology
 
-No detector, attack simulation, evaluation corpus, security metric, or achieved F/D level is implemented in Module 001. Foundation test counts are engineering verification, not product efficacy.
+Capability EVAL-001 and ATTACK-001 are PLANNED in [PRODUCT_CONTRACT.md](PRODUCT_CONTRACT.md). This file records measurement rules and targets. It is not an efficacy result.
+
+Module 002 includes 27 labeled synthetic attack fixtures (three per official family) and 20 benign controls. Structural tests establish fixture coverage and deterministic evidence recognition; they are engineering regressions, not measured product efficacy. No achieved F3 or D3 level is claimed.
 
 ## Separate the questions
 
@@ -24,7 +26,7 @@ F3 requires at least seven official categories. VETOQ targets all nine listed in
 | Attack coverage          | All nine families                                                | Cases, variants, sample size, failures per family                                                 |
 | Latency                  | See design-system.md                                             | Stage and end-to-end p50/p95, including configuration                                             |
 
-All actual results: **not measured**.
+Product reliability targets remain **not measured**. The live calls recorded in `modules/002-verification.md` are integration smokes with denominators too small for reliability claims.
 
 ## Corpus and execution plan
 

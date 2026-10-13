@@ -4,11 +4,28 @@ VETOQ — **Trust the Goal. Verify the Action.**
 
 ## Read before working
 
-Read README.md, docs/handoff.md, the active specification in docs/modules/, docs/product.md, docs/architecture.md, applicable docs/adr/, and docs/threat-model.md and docs/security-contracts.md. Read the relevant source and tests before changing behavior. This repository, not conversation memory, is the durable source of truth. Resolve documentation/code discrepancies explicitly.
+Obey the source-of-truth order in [docs/PRODUCT_CONTRACT.md](docs/PRODUCT_CONTRACT.md):
+
+1. `docs/PRODUCT_CONTRACT.md`
+2. `docs/SECURITY_INVARIANTS.md`
+3. `docs/ARCHITECTURE_CONTRACT.md`
+4. `docs/DATA_CONTRACT.md`
+5. `docs/API_CONTRACT.md`
+6. `docs/AGENT_CONTRACT.md`
+7. `docs/TOOL_EXECUTION_CONTRACT.md`
+8. `docs/UI_UX_CONTRACT.md`
+9. Accepted ADRs
+10. The current module specification
+11. `docs/ENGINEERING_CONTEXT.md`
+12. The verified implementation and its tests
+
+If two higher-priority contracts materially contradict each other, stop and report the contradiction. Do not choose silently.
+
+Then read README.md and docs/handoff.md. Older product, architecture, security, design, threat, and evaluation notes remain as module context and must not override the contracts. Read the relevant source and tests before changing behavior. This repository, not conversation memory, is the durable source of truth. Resolve documentation/code discrepancies explicitly.
 
 ## Scope and ownership
 
-Only Module 001 (repository foundation) is authorized. Module 002 and subsequent modules require separate human approval. Do not implement detectors, Goal Lock runtime behavior, Action Guard, model calls, tickets, business tables, attack simulations, dashboards, or multimodal ingestion in Module 001. Material architecture/scope changes require consultation before implementation. Routine implementation choices inside approved scope do not require repeated permission.
+Modules 001 and 002 are authorized. Module 002 is the text-only security vertical slice recorded in `docs/modules/002-security-slice.md`; subsequent modules require separate human approval. Do not expand Module 002 into multimodal ingestion, external ticket integrations, dashboards, or other later scope. Material architecture/scope changes require consultation before implementation. Routine implementation choices inside approved scope do not require repeated permission.
 
 Git and GitHub are HUMAN CONTROLLED. Never initialize repositories, create/switch branches, stage, commit, push, pull, merge, rebase, reset, stash, alter remotes, create issues/PRs, or otherwise mutate Git state. Read-only status/diff/log/branch inspection is permitted; prefer GIT_OPTIONAL_LOCKS=0. Report suggested Conventional Commit groups only. Never automate the owner's lifecycle.
 
@@ -22,11 +39,11 @@ Git and GitHub are HUMAN CONTROLLED. Never initialize repositories, create/switc
 - Retain provenance across transformations. Source labels and model explanations are not permission grants.
 - Do not introduce unused dependencies, speculative abstractions, empty directories, dead code, or product placeholders that imply functioning security.
 - Use pnpm for JavaScript and uv for Python. Pin direct dependencies and commit reproducible lockfiles through the human workflow. No floating latest specifications.
-- No LangGraph, model SDKs, OCR, PDF/DOCX tools, Redis, vector stores, Motion, or object storage in Module 001.
+- No LangGraph, provider SDK, OCR, PDF/DOCX tools, Redis, vector store, Motion, or object storage in Module 002.
 
 ## UX requirements
 
-Maintain obsidian/graphite surfaces, restrained emerald/jade and amber/copper semantics, legibility, and visible focus. No dominant blue, generic AI dashboard, or fake metrics. Validate 320, 360, 390, 430, 768, 1024, 1280, 1440, and 1920 px. Accessibility and responsiveness are release criteria, not polish. Use semantic HTML, keyboard access, reduced-motion support, adequate contrast, and non-color status labels.
+Follow [docs/UI_UX_CONTRACT.md](docs/UI_UX_CONTRACT.md). The brand is paper, ivory, stone, champagne, ink, graphite, lavender, plum, copper, coral, amber, and rose. Semantic ALLOW, REVIEW, and BLOCK colors are not the brand. No dominant dark, blue, or green theme, and no fake operational status. Validate 320, 360, 390, 430, 768, 1024, 1280, 1440, and 1920 px. Accessibility and responsiveness are release criteria, not polish. Use semantic HTML, keyboard access, reduced-motion support, adequate contrast, and non-color status labels.
 
 ## Validation and completion
 
@@ -38,4 +55,4 @@ Update docs/handoff.md with implemented scope, exact verification commands/resul
 
 The official categories and F1/F2/F3/D1/D2/D3 definitions are recorded in docs/product.md from the owner's verified organizer PDF. F3 means at least seven detected categories; VETOQ targets all nine. D3 requires highly heterogeneous multimodal inputs and demonstrably high reliability. Text-only Module 002 is an initial slice, not reduced final scope. Claims require reproducible evidence.
 
-Official deadline: 11 October 2026, 11:59 PM IST. Internal freeze: 11 October 2026, 8:00 PM IST. Do not replace the freeze with an earlier assumption.
+The hackathon deadline of 11 October 2026, 11:59 PM IST and the internal freeze of 8:00 PM IST are historical event dates. They are not the current engineering schedule.

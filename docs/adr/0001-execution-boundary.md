@@ -1,10 +1,10 @@
 # ADR 0001 — Modular architecture and deterministic execution boundary
 
-Status: accepted in pre-implementation architecture review. Product enforcement is planned, not implemented in Module 001.
+Status: accepted and implemented for the Module 002 local ticket slice. Subordinate to the canonical contracts in [PRODUCT_CONTRACT.md](../PRODUCT_CONTRACT.md).
 
 ## Decision
 
-Use a Next.js UI and modular FastAPI backend with PostgreSQL. A future runner shares the backend codebase. Every consequential action must traverse a private deterministic Action Guard and dispatcher. Models provide evidence/proposals and have no execution authority or direct tool credentials. Keep model access behind a provider-independent interface.
+Use a Next.js UI and modular FastAPI backend with PostgreSQL. A separate runner shares the backend codebase. Every consequential action traverses a private deterministic Action Guard and dispatcher. Models provide evidence/proposals and have no execution authority or direct tool credentials. Keep model access behind a provider-independent interface.
 
 ## Why
 

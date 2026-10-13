@@ -1,14 +1,16 @@
 # Module 002 — First real security vertical slice
 
-**PLANNED. NOT AUTHORIZED OR IMPLEMENTED.**
+**Current module specification.** Product, security, architecture, data, and API authority are the contracts in `docs/`. This specification does not override them.
+
+**IMPLEMENTED. AWAITING HUMAN REVIEW AND MANUAL GIT WORKFLOW.**
 
 ## Goal and boundaries
 
 An authenticated operator reviews pasted support-email text. A real model proposes no action or one scoped ticket. VETOQ inspects evidence, enforces confirmed authority, allows one legitimate real ticket, rejects an unauthorized proposal, and persists a complete audit. Text is the first slice only; later approved modules expand toward heterogeneous D3 coverage.
 
-## Prerequisites
+## Locked implementation choices
 
-Approve Module 002 separately. Select model provider/access/budget and hosting/identity path. Model access stays behind the provider adapter in security-contracts.md. Confirm the reference real ticket store; it is not an external SaaS integration. Map final multimodal requirements before expansion. Respect product.md deadlines.
+Groq supplies contextual analysis through the provider-neutral interface, initially using `openai/gpt-oss-120b`. Clerk supplies identity; workspace membership remains local and server-authoritative. The reference action is a real PostgreSQL-backed `tickets.create`. Inputs are synthetic or sanitized text. Protected content expires after 24 hours and minimized audit metadata after 30 days through the operator retention command.
 
 ## Implementation contract
 
@@ -27,7 +29,7 @@ Approve Module 002 separately. Select model provider/access/budget and hosting/i
 
 ## APIs and records
 
-Follow architecture.md and security-contracts.md. Implement only me, run creation/list/read/events/content/cancel, exact review decision, and ticket read. No public generic tool executor. Add the eleven planned relational tables only with the approved initial Alembic migration. SQLAlchemy/Alembic belong here, not in the foundation.
+Implemented endpoints are `me`, run creation/list/read/events/content/cancel, exact review decision, and ticket read. There is no public generic tool executor. The initial Alembic migration creates exactly the eleven approved relational tables and database triggers for immutable authority, proposals, protected content, and append-only audit.
 
 ## Acceptance gates
 
@@ -36,6 +38,8 @@ A real provider call must produce valid analysis or explicit failure. An authori
 A live model may resist an attack upstream. Label that honestly; do not fabricate a denied proposal. A final-gate live demonstration requires an actually observed model proposal and persisted veto. Controlled evaluation proposals separately establish deterministic enforcement.
 
 All nine attack families need cases, and benign task utility must be measured. No effect when analysis is incomplete. No duplicate ticket on retries. All required widths, keyboard focus, and accessibility checks pass. No unresolved critical/high security defects. Update handoff and measured results.
+
+The final implementation evidence and exact limitations are in [002-verification.md](002-verification.md). The real allowed flow persisted and verified one ticket. The controlled same-tool wrong-workspace flow persisted `BLOCK` with zero ticket writes. A live adversarial model call resisted the injected target upstream, so it is evidence of model behavior and is not claimed as a live final-gate veto.
 
 ## Later scope
 
