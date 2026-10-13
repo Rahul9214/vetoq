@@ -2,26 +2,49 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
 for (const width of [320, 360, 390, 430, 768, 1024, 1280, 1440, 1920]) {
-  test("shell reflows at " + width + "px", async ({ page }, testInfo) => {
-    await page.setViewportSize({ width, height: 900 });
-    await page.goto("/");
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-    await expect(
-      page.getByText("Security workflows are not available in this build."),
-    ).toBeVisible();
-    const dimensions = await page.evaluate(() => ({
-      document: document.documentElement.scrollWidth,
-      viewport: document.documentElement.clientWidth,
-    }));
-    expect(dimensions.document).toBeLessThanOrEqual(dimensions.viewport);
-    await expect(page.getByRole("contentinfo")).toBeVisible();
-    if (width === 320 || width === 1440)
-      await page.screenshot({
-        path: testInfo.outputPath("shell.png"),
-        fullPage: true,
-      });
-  });
+  test(
+    "product shell reflows at " + width + "px",
+    async ({ page }, testInfo) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/");
+      await expect(
+        page.getByRole("heading", {
+          level: 1,
+          name: /Trust the goal\.\s*Verify the action\./i,
+        }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("heading", {
+          level: 2,
+          name: "Content can request an action. It cannot authorize one.",
+        }),
+      ).toBeVisible();
+      await expect(page.getByRole("banner")).toBeVisible();
+      const dimensions = await page.evaluate(() => ({
+        document: document.documentElement.scrollWidth,
+        viewport: document.documentElement.clientWidth,
+      }));
+      expect(dimensions.document).toBeLessThanOrEqual(dimensions.viewport);
+      await expect(page.getByRole("contentinfo")).toBeVisible();
+      if (width === 390 || width === 1440)
+        await page.screenshot({
+          path: testInfo.outputPath("shell.png"),
+          fullPage: true,
+        });
+    },
+  );
 }
+test("configured Clerk reaches a usable signed-out state", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("link", { name: "Sign in" }).first()).toBeVisible(
+    {
+      timeout: 15_000,
+    },
+  );
+  await expect(
+    page.getByRole("link", { name: "Start secure run" }),
+  ).toBeVisible();
+});
 test("keyboard skip link moves focus to main", async ({ page }) => {
   await page.goto("/");
   await page.keyboard.press("Tab");
@@ -43,14 +66,14 @@ test("has no automated WCAG A/AA violations at compact and wide sizes", async ({
     expect(report.violations).toEqual([]);
   }
 });
-test("supports reduced motion and 200% text enlargement at 320px", async ({
+test("supports reduced motion and 400% text enlargement at 320px", async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ width: 320, height: 900 });
   await page.goto("/");
   await page.evaluate(() => {
-    document.documentElement.style.fontSize = "200%";
+    document.documentElement.style.fontSize = "400%";
   });
   expect(
     await page.evaluate(

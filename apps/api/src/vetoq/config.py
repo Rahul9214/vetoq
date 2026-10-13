@@ -13,7 +13,7 @@ ROOT_ENV = Path(__file__).resolve().parents[4] / ".env"
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="VETOQ_",
-        env_file=ROOT_ENV,
+        env_file=(ROOT_ENV, ROOT_ENV.parent / "apps/web/.env.local"),
         env_file_encoding="utf-8",
         extra="ignore",
         hide_input_in_errors=True,
@@ -22,6 +22,20 @@ class Settings(BaseSettings):
     environment: Literal["development", "test", "production"] = "development"
     trusted_hosts: list[str] = Field(default_factory=lambda: ["localhost", "127.0.0.1", "[::1]"])
     database_url: SecretStr | None = Field(default=None, repr=False)
+
+    ai_provider: Literal["groq"] = "groq"
+    ai_model: str = "openai/gpt-oss-120b"
+    groq_api_key: SecretStr | None = Field(
+        default=None, validation_alias="GROQ_API_KEY", repr=False
+    )
+    clerk_publishable_key: str | None = Field(
+        default=None, validation_alias="NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", repr=False
+    )
+    clerk_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:3000"]
+    )
+    model_timeout: float = Field(default=25, ge=1, le=60)
+    model_max_tokens: int = Field(default=3000, ge=256, le=6000)
 
     @field_validator("trusted_hosts")
     @classmethod
