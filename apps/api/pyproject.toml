@@ -1,7 +1,7 @@
 [project]
 name = "vetoq-api"
 version = "0.1.0"
-description = "VETOQ foundation API; health endpoints only."
+description = "VETOQ Module 002 API."
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "fastapi==0.142.2",
@@ -9,11 +9,16 @@ dependencies = [
   "pydantic-settings==2.15.0",
   "psycopg[binary]==3.3.6",
   "uvicorn==0.54.0",
+  "sqlalchemy==2.1.4",
+  "alembic==1.20.0",
+  "pyjwt[crypto]==2.15.1",
+  "cryptography==50.0.2",
+  "httpx2==2.13.1",
+  "starlette==1.7.0",
 ]
 
 [dependency-groups]
 dev = [
-  "httpx2==2.13.1",
   "mypy==2.4.0",
   "pytest==9.1.1",
   "ruff==0.16.10",
@@ -41,3 +46,4 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-ra --strict-markers --strict-config"
 filterwarnings = ["error"]
+markers = ["integration: requires VETOQ_TEST_DATABASE_URL and migrated PostgreSQL"]

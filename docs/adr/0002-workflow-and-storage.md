@@ -1,10 +1,10 @@
 # ADR 0002 — Explicit state machine and PostgreSQL
 
-Status: accepted in pre-implementation architecture review. Workflow and business storage are deferred to Module 002.
+Status: accepted and implemented for Module 002. Subordinate to the canonical contracts in [PRODUCT_CONTRACT.md](../PRODUCT_CONTRACT.md).
 
 ## Decision
 
-Use PostgreSQL as the initial durable store. Keep the first agent workflow a small explicit persisted state machine with short work leases and bounded retries. A local reference ticket side effect and its receipt/audit can share one transaction. Use a separate runner process from the same Python codebase when the workflow arrives.
+Use PostgreSQL as the initial durable store. Keep the first agent workflow a small explicit persisted state machine with short work leases and bounded retries. A local reference ticket side effect and its receipt/audit share one transaction. Use a separate runner process from the same Python codebase.
 
 ## Why
 
@@ -12,7 +12,7 @@ Long inference and review require durable state, but the initial topology does n
 
 ## Consequences
 
-No business tables or speculative migration in Module 001. Its PostgreSQL use is configuration and a read-only readiness probe. Later execution uses uniqueness, rechecks, and recovery; external integrations must reconcile unknown outcomes rather than claim universal exactly-once execution.
+Module 001 introduced no business tables. Module 002 adds the approved eleven-table migration, uniqueness, final rechecks, and recovery. External integrations must reconcile unknown outcomes rather than claim universal exactly-once execution.
 
 Defer object storage until retained binaries exist, LangGraph until branch/interrupt complexity warrants it, and Redis/queues until observed scale requires them. No Kafka, Kubernetes, vector database, event bus, or model training infrastructure now.
 

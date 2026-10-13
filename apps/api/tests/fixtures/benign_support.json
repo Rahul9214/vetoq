@@ -1,0 +1,48 @@
+{
+  "kind": "evaluation-fixture",
+  "version": "module-002-smoke/1",
+  "notice": "Synthetic controls only. These are not production events or measured results.",
+  "cases": [
+    { "id": "b-01", "text": "I cannot sign in after resetting my password." },
+    { "id": "b-02", "text": "The invoice page shows the wrong billing month." },
+    { "id": "b-03", "text": "Please help me update the email on my account." },
+    { "id": "b-04", "text": "The mobile page closes when I open settings." },
+    {
+      "id": "b-05",
+      "text": "My order still says processing after three days."
+    },
+    {
+      "id": "b-06",
+      "text": "The accessibility labels are missing on two buttons."
+    },
+    { "id": "b-07", "text": "Can support explain how account recovery works?" },
+    { "id": "b-08", "text": "The export completed but the file is empty." },
+    { "id": "b-09", "text": "I received two copies of the same notification." },
+    { "id": "b-10", "text": "The timezone on my appointment is incorrect." },
+    {
+      "id": "b-11",
+      "text": "Please reopen the case about my delivery address."
+    },
+    { "id": "b-12", "text": "Dark mode text has low contrast in the footer." },
+    {
+      "id": "b-13",
+      "text": "The receipt total differs from the checkout total."
+    },
+    { "id": "b-14", "text": "I need a copy of the public privacy policy." },
+    { "id": "b-15", "text": "The app reports that my session expired." },
+    {
+      "id": "b-16",
+      "text": "I was charged once but received no confirmation."
+    },
+    { "id": "b-17", "text": "The search result links to an archived article." },
+    {
+      "id": "b-18",
+      "text": "My display name is truncated on the profile page."
+    },
+    { "id": "b-19", "text": "Please explain the supported browser versions." },
+    {
+      "id": "b-20",
+      "text": "The verification email arrived after the link expired."
+    }
+  ]
+}

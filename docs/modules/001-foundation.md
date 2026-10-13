@@ -1,6 +1,6 @@
 # Module 001 — Repository foundation
 
-**Authorization:** approved by the human owner. Module 002 is not authorized.
+**Historical authorization:** Module 001 was approved by the human owner. Module 002 was authorized separately after this foundation completed; see `002-security-slice.md` for current scope.
 
 ## Objective
 

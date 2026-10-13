@@ -1,11 +1,17 @@
+import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { SkipLink } from "@/components/skip-link";
 import "./globals.css";
+import "./vetoq.css";
 
 export const metadata: Metadata = {
-  title: "VETOQ — Trust the Goal. Verify the Action.",
+  title: {
+    default: "VETOQ — Trust the Goal. Verify the Action.",
+    template: "%s · VETOQ",
+  },
   description:
-    "VETOQ application foundation. Security workflows are not yet available.",
+    "Execution security that binds AI-proposed actions to confirmed user authority.",
 };
 
 export default function RootLayout({
@@ -14,10 +20,40 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <a className="skip-link" href="#main-content" tabIndex={0}>
-          Skip to main content
-        </a>
-        {children}
+        <ClerkProvider
+          appearance={{
+            variables: {
+              colorPrimary: "#6d28a8",
+              colorBackground: "#fcfaf6",
+              colorForeground: "#1c1917",
+              colorMutedForeground: "#645e56",
+              colorInput: "#ffffff",
+              colorInputForeground: "#1c1917",
+              colorDanger: "#be123c",
+              colorNeutral: "#f7f4ec",
+              borderRadius: "12px",
+              fontFamily: '"Segoe UI Variable", "Segoe UI", sans-serif',
+            },
+            elements: {
+              rootBox: "vetoq-clerk-root",
+              cardBox: "vetoq-clerk-card-box",
+              card: "vetoq-clerk-card",
+              headerTitle: "vetoq-clerk-title",
+              headerSubtitle: "vetoq-clerk-subtitle",
+              socialButtonsBlockButton: "vetoq-clerk-social",
+              socialButtonsBlockButtonText: "vetoq-clerk-social-text",
+              dividerLine: "vetoq-clerk-divider",
+              dividerText: "vetoq-clerk-divider-text",
+              formFieldInput: "vetoq-clerk-input",
+              formButtonPrimary: "vetoq-clerk-primary",
+              footer: "vetoq-clerk-footer",
+              footerActionLink: "vetoq-clerk-link",
+            },
+          }}
+        >
+          <SkipLink />
+          {children}
+        </ClerkProvider>
       </body>
     </html>
   );

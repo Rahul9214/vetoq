@@ -1,5 +1,7 @@
 # Module 001 verification and completion record
 
+**Historical record of the foundation verification on 8 October 2026.** It does not describe the current Module 002 repository. Current authority is [PRODUCT_CONTRACT.md](../PRODUCT_CONTRACT.md).
+
 Verified: **8 October 2026, Asia/Calcutta**. Scope: **repository foundation only**.
 
 **Required foundation acceptance checks pass. Supplemental full dependency audit remains FAIL with one high development-only advisory; this is not suppressed or represented as clean.**

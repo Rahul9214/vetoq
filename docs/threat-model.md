@@ -1,6 +1,6 @@
-# Threat model — planned product
+# Threat model
 
-Module 001 provides a shell and health endpoints only; it does not mitigate prompt injection. This model governs subsequent approved implementation.
+Canonical controls are [SECURITY_INVARIANTS.md](SECURITY_INVARIANTS.md). This file is the threat narrative for the text slice. Module 002 implements these controls: verified Clerk identity, server-authoritative membership, immutable Goal Lock, untrusted provenance, bounded decoding, strict model output, deterministic Action Guard, digest-bound review, private dispatch, transactional tickets/receipts/audit, and read-back verification. These controls apply only to the mediated local ticket tool and do not establish multimodal, external-integration, or F3/D3 reliability claims.
 
 ## Assets and adversaries
 

@@ -10,6 +10,12 @@
   "scripts": {
     "dev:web": "pnpm --filter @vetoq/web dev",
     "dev:api": "node scripts/api.mjs dev",
+    "dev:worker": "node scripts/api.mjs worker",
+    "worker:once": "node scripts/api.mjs worker --once",
+    "db:migrate": "node scripts/api.mjs migrate",
+    "admin:provision": "node scripts/api.mjs provision",
+    "retention:run": "node scripts/api.mjs retain",
+    "verify:groq": "node scripts/api.mjs live-groq",
     "verify": "node scripts/verify.mjs",
     "verify:web": "pnpm --filter @vetoq/web verify",
     "verify:api": "node scripts/api.mjs verify",

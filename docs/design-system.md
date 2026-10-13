@@ -1,16 +1,18 @@
 # Design system and release-quality contract
 
-## Implemented Module 001 baseline
+Canonical visual direction and UI truthfulness are [UI_UX_CONTRACT.md](UI_UX_CONTRACT.md). Performance figures below are targets, not measured SLOs. See [OBSERVABILITY_SLO.md](OBSERVABILITY_SLO.md).
 
-Neutral application shell, semantic header/main/footer, one primary heading, keyboard skip link, visible focus, responsive width/type, dark surfaces, honest foundation-only message, and reduced-motion CSS. There are no product screens, security statuses, charts, or animations.
+## Implemented Module 002 baseline
 
-Tokens live in apps/web/src/app/globals.css. Obsidian #101211, graphite #191d1b, primary ink #e7ece8, muted text #adb7b0, jade #8eddb4, review amber #edbc79, blocked copper #e5a177, critical red #ffaca7. Semantic tokens establish future direction, not actual runtime outcomes. Validate each used foreground/background combination.
+The responsive product shell includes run submission/recent runs, run detail, provenance/evidence, findings, exact-action review, status, and a ticket outcome that is labeled verified only after read-back. It uses semantic landmarks, a keyboard skip link, visible focus, non-color status text, safe inert source rendering, and reduced-motion CSS. Visible operational labels come from persisted API state.
+
+Canonical tokens live in `apps/web/src/app/globals.css`: paper, ivory, stone, champagne, ink, graphite, lavender, plum, copper, coral, amber, and rose. `apps/web/src/app/vetoq.css` aliases those tokens for existing layout and motion rules. ALLOW, REVIEW, and BLOCK use separate semantic colors and are not the brand palette. Validate each used foreground/background combination.
 
 Use system sans-serif for reading and monospace for technical metadata. No remotely fetched font is required for builds. Fine borders and restrained radii provide separation. Avoid dominant blue, AI gradients, excessive rounded cards, glassmorphism, robots, and decorative graph motion.
 
-## Planned P0 information architecture
+## Implemented P0 information architecture
 
-Run submission/list; run detail with goal/source/findings/proposal/policy/outcome; exact-action review; persisted ticket detail. A real evaluation report view is required before submission. Defer cross-run analytics, integration management, and graph layouts. Do not build fake SOC dashboards, generic chatbot landing experiences, or visual policy programming.
+Run submission/recent list; run detail with goal/source/findings/proposal/policy/outcome; inline exact-action review; persisted ticket detail. A dedicated evaluation report view remains deferred. Cross-run analytics, integration management, and graph layouts remain out of scope.
 
 ## Responsive acceptance
 
@@ -22,7 +24,7 @@ Mobile traces use ordered events; graphs have equivalent accessible lists. Table
 
 Target WCAG 2.2 AA: semantic landmarks/headings, accessible names, full keyboard use, visible unobscured focus, overlay focus restoration, error recovery, reduced motion, and labels beyond color. Normal text contrast >=4.5:1; large text/non-text controls >=3:1. Primary touch controls target 44px. Reflow at 320 CSS px, 200% text enlargement, and 400% browser zoom must retain functionality.
 
-Automation supplements manual keyboard, assistive-technology, and zoom checks; it does not establish full conformance. The foundation browser suite tests nine widths, skip-link focus, axe A/AA rules, reduced-motion emulation, and enlarged text. Record any manual validation gaps in handoff.md.
+Automation supplements manual keyboard, assistive-technology, and zoom checks; it does not establish full conformance. The browser suite tests nine widths in Chromium, Firefox, and WebKit, skip-link focus, axe A/AA rules, reduced-motion emulation, and 400% enlarged text at 320px. Record manual validation gaps in handoff.md.
 
 ## Performance targets, not measurements
 
