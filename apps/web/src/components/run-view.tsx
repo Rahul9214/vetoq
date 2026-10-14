@@ -1,10 +1,19 @@
 ﻿"use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { StatusBadge } from "@/components/status-badge";
 import { api } from "@/lib/api";
 import type { AuditEvent, RunDetail } from "@/lib/contracts";
+import {
+  failureLabel,
+  mediaLabel,
+  outcomeDetail,
+  outcomeTitle,
+  reasonLabel,
+  representationLabel,
+  transformLabel,
+} from "@/lib/run-narrative";
 import {
   findingsStage,
   goalLockStage,
@@ -14,43 +23,34 @@ import {
   sourceStage,
 } from "@/lib/run-state";
 
-function StageHeader({
-  number,
-  kicker,
-  title,
-  state,
-}: {
-  number: string;
-  kicker: string;
-  title: string;
-  state?: string;
-}) {
-  return (
-    <header className="stage-header">
-      <span className="stage-number" aria-hidden="true">
-        {number}
-      </span>
-      <div>
-        <p className="eyebrow">{kicker}</p>
-        <h2>{title}</h2>
-      </div>
-      {state ? <StatusBadge value={state} /> : null}
-    </header>
-  );
+type Source = RunDetail["sources"][number];
+type Edge = RunDetail["edges"][number];
+
+function recorded(value: string | number | null | undefined): string {
+  return value === null || value === undefined || value === ""
+    ? "Not recorded"
+    : String(value);
+}
+
+function lockValue(lock: Record<string, unknown>, key: string): string | null {
+  const value = lock[key];
+  if (value === null || value === undefined || value === "") return null;
+  return String(value);
 }
 
 export function RunView({ runId }: { runId: string }) {
   const [run, setRun] = useState<RunDetail | null>(null);
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [content, setContent] = useState<Record<string, string>>({});
+  const [openDetail, setOpenDetail] = useState<Record<string, boolean>>({});
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+  const [observedAt, setObservedAt] = useState<number | null>(null);
   const reviewHeading = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
-
     let cursor = 0;
     let delay = 1500;
 
@@ -92,6 +92,11 @@ export function RunView({ runId }: { runId: string }) {
   useEffect(() => {
     if (run?.state === "AWAITING_REVIEW") reviewHeading.current?.focus();
   }, [run?.state]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setObservedAt(Date.now()), 0);
+    return () => window.clearTimeout(timer);
+  }, [run?.review?.expires_at, run?.review?.decision]);
 
   async function loadContent(nodeId: string) {
     if (content[nodeId]) return;
@@ -161,32 +166,39 @@ export function RunView({ runId }: { runId: string }) {
   const canCancel = !isTerminal(run.state) && run.state !== "AWAITING_REVIEW";
   const goal = String(run.goal_lock.goal ?? run.goal);
   const proposal = run.action?.proposal;
+  const evidenceIds = (proposal?.evidence_ids ?? []).filter(
+    (id) => typeof id === "string" && id.length > 0,
+  );
   const verdict = run.action?.verdict;
-  const outcomeState = run.ticket?.verified_at
-    ? "VERIFIED"
-    : run.ticket
-      ? "VERIFYING"
-      : run.state;
+  const sourcesById = new Map(run.sources.map((source) => [source.id, source]));
+  const childIds = new Set(run.edges.map((edge) => edge.child_id));
+  const edgesByParent = new Map<string, Edge[]>();
+  for (const edge of run.edges) {
+    const list = edgesByParent.get(edge.parent_id) ?? [];
+    list.push(edge);
+    edgesByParent.set(edge.parent_id, list);
+  }
+  const roots = run.sources.filter((source) => !childIds.has(source.id));
 
   return (
-    <div className="run-story">
+    <article className="run-narrative">
       <header className="run-hero">
         <div>
           <Link className="back-link" href="/">
             ← Security workbench
           </Link>
-          <p className="eyebrow">Guarded run / {run.id.slice(0, 8)}</p>
-          <h1>{goal}</h1>
-          <p>
-            Every stage below is persisted evidence. Model analysis informs the
-            proposal; deterministic policy owns the decision.
-          </p>
+          <p className="eyebrow">Run</p>
+          <h1>{outcomeTitle(run)}</h1>
+          <p className="run-outcome">{outcomeDetail(run)}</p>
         </div>
         <div className="run-hero-state">
           <StatusBadge value={run.state} />
-          <time dateTime={run.created_at}>
-            Started {new Date(run.created_at).toLocaleString()}
-          </time>
+          <p className="run-identity">
+            <span>{run.id}</span>
+            <time dateTime={run.created_at}>
+              Started {new Date(run.created_at).toLocaleString()}
+            </time>
+          </p>
           {canCancel ? (
             <button
               className="button button-secondary"
@@ -206,422 +218,557 @@ export function RunView({ runId }: { runId: string }) {
       ) : null}
       {run.failure ? (
         <section className="notice notice-error" aria-label="Run failure">
-          <strong>Processing stopped:</strong> {run.failure}
+          <strong>{failureLabel(run.failure)}</strong>
+          <span className="run-code">{run.failure}</span>
+          {run.state === "FAILED" && !run.ticket ? (
+            <p>No execution is recorded for this run.</p>
+          ) : null}
         </section>
       ) : null}
 
-      <nav className="stage-index" aria-label="Run evidence stages">
-        {[
-          ["01", "Goal Lock", "goal-lock"],
-          ["02", "Source", "source-provenance"],
-          ["03", "Findings", "inspection-findings"],
-          ["04", "AI Proposal", "ai-proposal"],
-          ["05", "Action Guard", "action-guard"],
-          ["06", "Outcome", "execution-outcome"],
-        ].map(([number, label, anchor]) => (
-          <a key={anchor} href={`#${anchor}`}>
-            <span>{number}</span>
-            {label}
-          </a>
-        ))}
-      </nav>
-
-      <div className="stage-stack">
-        <section
-          id="goal-lock"
-          className="evidence-stage stage-authority"
-          aria-labelledby="goal-lock-title"
-        >
-          <StageHeader
-            number="01"
-            kicker="Immutable authority"
-            title="Goal Lock"
-            state={goalLockStage(run)}
-          />
-          <p className="stage-lead" id="goal-lock-title">
-            User-confirmed authority was sealed before untrusted content reached
-            model analysis.
+      <section className="run-stage" aria-labelledby="goal-title">
+        <p className="run-stage-index">01 · Intent</p>
+        <div>
+          <h2 id="goal-title">Confirmed goal</h2>
+          <p className="run-goal">{goal}</p>
+          <p className="field-help">
+            This is the outcome the run was allowed to pursue.
           </p>
-          <dl className="evidence-ledger">
+          <StatusBadge value={goalLockStage(run)} />
+        </div>
+      </section>
+
+      <section className="run-stage" aria-labelledby="authority-title">
+        <p className="run-stage-index">02 · Authority</p>
+        <div>
+          <h2 id="authority-title">Granted authority</h2>
+          <p className="field-help">
+            This boundary was sealed for this run. Membership in another
+            workspace does not widen it.
+          </p>
+          <dl className="authority-facts">
             <div>
-              <dt>Authorized goal</dt>
-              <dd>{goal}</dd>
-            </div>
-            <div>
-              <dt>Workspace</dt>
-              <dd>{run.workspace_id}</dd>
-            </div>
-            <div>
-              <dt>Permitted tool</dt>
-              <dd>{String(run.goal_lock.tool)}</dd>
+              <dt>Tool</dt>
+              <dd>{recorded(lockValue(run.goal_lock, "tool"))}</dd>
             </div>
             <div>
               <dt>Destination</dt>
-              <dd>{String(run.goal_lock.destination)}</dd>
+              <dd>{recorded(lockValue(run.goal_lock, "destination"))}</dd>
             </div>
             <div>
-              <dt>Write limit</dt>
-              <dd>{String(run.goal_lock.max_writes)}</dd>
+              <dt>Writes</dt>
+              <dd>{recorded(lockValue(run.goal_lock, "max_writes"))}</dd>
             </div>
             <div>
               <dt>Expires</dt>
               <dd>{new Date(run.expires_at).toLocaleString()}</dd>
             </div>
+            <div>
+              <dt>Policy</dt>
+              <dd>{recorded(lockValue(run.goal_lock, "policy_revision"))}</dd>
+            </div>
+            <div>
+              <dt>Workspace</dt>
+              <dd className="run-code">{run.workspace_id}</dd>
+            </div>
           </dl>
-        </section>
+          <TechnicalDetails title="Goal Lock record">
+            <dl className="authority-facts">
+              {(
+                [
+                  ["Principal", "principal"],
+                  ["Template", "template"],
+                  ["Tool version", "tool_version"],
+                  ["Source", "source_id"],
+                  ["Source digest", "source_digest"],
+                  ["Proposal limit", "max_proposals"],
+                ] as const
+              ).map(([label, key]) => (
+                <div key={key}>
+                  <dt>{label}</dt>
+                  <dd className="run-code">
+                    {recorded(lockValue(run.goal_lock, key))}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </TechnicalDetails>
+        </div>
+      </section>
 
-        <section
-          id="source-provenance"
-          className="evidence-stage"
-          aria-labelledby="source-title"
-        >
-          <StageHeader
-            number="02"
-            kicker="Untrusted by construction"
-            title="Source / Provenance"
-            state={sourceStage(run)}
-          />
-          <p className="stage-lead" id="source-title">
-            Original and derived content retain supplier, trust, digest, and
-            retention metadata.
+      <section className="run-stage" aria-labelledby="evidence-title">
+        <p className="run-stage-index">03 · Evidence</p>
+        <div>
+          <h2 id="evidence-title">Evidence</h2>
+          <p className="field-help">
+            Original evidence and each derived record stay untrusted text.
+            Relationships come from the recorded parent and child links.
           </p>
-          <div className="source-grid">
-            {run.sources.map((source) => (
-              <article className="source-card" key={source.id}>
-                <header>
-                  <div>
-                    <strong>{source.origin}</strong>
-                    <span>{source.supplier}</span>
-                  </div>
-                  <span className="trust-label">UNTRUSTED</span>
-                </header>
-                <dl>
-                  <div>
-                    <dt>Digest</dt>
-                    <dd>{source.digest.slice(0, 16)}…</dd>
-                  </div>
-                  <div>
-                    <dt>Capture</dt>
-                    <dd>{source.complete ? "Complete" : "Incomplete"}</dd>
-                  </div>
-                  <div>
-                    <dt>Expires</dt>
-                    <dd>{new Date(source.expires_at).toLocaleString()}</dd>
-                  </div>
-                </dl>
-                <button
-                  className="text-button"
-                  type="button"
-                  onClick={() => void loadContent(source.id)}
-                  aria-expanded={Boolean(content[source.id])}
-                >
-                  {content[source.id]
-                    ? "Protected text loaded"
-                    : "View protected text"}
-                </button>
-                {content[source.id] ? (
-                  <pre className="evidence-text">{content[source.id]}</pre>
-                ) : null}
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section
-          id="inspection-findings"
-          className="evidence-stage"
-          aria-labelledby="findings-title"
-        >
-          <StageHeader
-            number="03"
-            kicker="Deterministic + contextual evidence"
-            title="Inspection Findings"
-            state={findingsStage(run)}
-          />
-          <p className="stage-lead" id="findings-title">
-            Findings identify suspicious spans and their source records. They do
-            not grant or remove authority.
-          </p>
-          {run.findings.length ? (
-            <ol className="finding-list">
-              {run.findings.map((finding) => (
-                <li key={finding.id}>
-                  <div className="finding-topline">
-                    <span className="finding-family">{finding.family}</span>
-                    <span className="finding-origin">
-                      {finding.origin} evidence
-                    </span>
-                  </div>
-                  <p>{finding.explanation}</p>
-                  <small>
-                    Source {finding.node_id.slice(0, 8)} · offsets{" "}
-                    {finding.start_offset}–{finding.end_offset}
-                  </small>
-                </li>
+          <StatusBadge value={sourceStage(run)} />
+          {roots.length ? (
+            <ol className="evidence-tree">
+              {roots.map((source) => (
+                <EvidenceNode
+                  key={source.id}
+                  source={source}
+                  edgesByParent={edgesByParent}
+                  sourcesById={sourcesById}
+                  content={content}
+                  openDetail={openDetail}
+                  onToggleDetail={(id) =>
+                    setOpenDetail((current) => ({
+                      ...current,
+                      [id]: !current[id],
+                    }))
+                  }
+                  onLoad={(id) => void loadContent(id)}
+                />
               ))}
             </ol>
           ) : (
-            <p className="stage-empty">
-              No suspicious finding has been persisted for this run.
-            </p>
+            <p>No evidence record is stored for this run.</p>
           )}
-        </section>
+        </div>
+      </section>
 
-        <section
-          id="ai-proposal"
-          className="evidence-stage stage-proposal"
-          aria-labelledby="proposal-title"
-        >
-          <StageHeader
-            number="04"
-            kicker="Provider-neutral model evidence"
-            title="AI Proposal"
-            state={proposalStage(run)}
-          />
-          <div className="proposal-layout">
-            <div>
-              <h3 id="proposal-title">Contextual analysis</h3>
-              {run.analysis ? (
-                <>
-                  <p>{run.analysis.summary}</p>
-                  <p className="metadata">
-                    {run.analysis.provider} / {run.analysis.model} / observed{" "}
-                    {run.analysis.elapsed_ms} ms
-                  </p>
-                </>
-              ) : (
-                <p className="stage-empty">
-                  No completed model analysis is available yet.
-                </p>
-              )}
-            </div>
-            <div className="proposal-record">
-              <span className="record-label">Typed proposal</span>
-              {proposal ? (
-                <dl>
-                  <div>
-                    <dt>Tool</dt>
-                    <dd>{proposal.tool}</dd>
-                  </div>
-                  <div>
-                    <dt>Workspace argument</dt>
-                    <dd>{proposal.arguments.workspace_id}</dd>
-                  </div>
-                  <div>
-                    <dt>Title</dt>
-                    <dd>{proposal.arguments.title}</dd>
-                  </div>
-                  <div>
-                    <dt>Body</dt>
-                    <dd>{proposal.arguments.body}</dd>
-                  </div>
-                </dl>
-              ) : (
-                <p>No action proposal exists.</p>
-              )}
-            </div>
-          </div>
-        </section>
-
-        <section
-          id="action-guard"
-          className="evidence-stage stage-guard"
-          aria-labelledby="guard-title"
-        >
-          <StageHeader
-            number="05"
-            kicker="Deterministic enforcement"
-            title="Action Guard"
-            state={guardStage(run)}
-          />
-          <p className="stage-lead" id="guard-title">
-            The exact typed action is compared with the immutable Goal Lock,
-            current membership, policy revision, approval state, and write
-            budget.
+      <section className="run-stage" aria-labelledby="findings-title">
+        <p className="run-stage-index">04 · Findings</p>
+        <div>
+          <h2 id="findings-title">Security findings</h2>
+          <p className="field-help">
+            Findings are security evidence about a recorded span. They do not
+            prove intent, and they do not grant authority.
           </p>
-          {run.action ? (
-            <div className="guard-decision">
-              <div className="verdict-panel">
-                <StatusBadge value={guardStage(run)} />
-                <strong>
-                  {verdict === "ALLOW"
-                    ? "Exact action is inside confirmed authority."
-                    : verdict === "BLOCK"
-                      ? "Execution is prohibited before any write."
-                      : verdict === "REVIEW"
-                        ? "Exact-action human review is required."
-                        : "Authorization has not completed."}
-                </strong>
+          <StatusBadge value={findingsStage(run)} />
+          {run.findings.length ? (
+            <ol className="finding-list">
+              {run.findings.map((finding) => {
+                const linked = sourcesById.has(finding.node_id);
+                return (
+                  <li key={finding.id} id={`finding-${finding.id}`}>
+                    <p className="finding-family">{finding.family}</p>
+                    <p>{finding.explanation}</p>
+                    <p>
+                      {linked ? (
+                        <a href={`#evidence-${finding.node_id}`}>
+                          Evidence {finding.node_id.slice(0, 8)}
+                        </a>
+                      ) : (
+                        <span>Evidence {finding.node_id.slice(0, 8)}</span>
+                      )}
+                      <span>
+                        {" "}
+                        · offsets {finding.start_offset}–{finding.end_offset}
+                      </span>
+                      <span> · {finding.origin} evidence</span>
+                    </p>
+                  </li>
+                );
+              })}
+            </ol>
+          ) : (
+            <p>No security finding is recorded for this run.</p>
+          )}
+        </div>
+      </section>
+
+      <section className="run-stage" aria-labelledby="proposal-title">
+        <p className="run-stage-index">05 · Proposal</p>
+        <div>
+          <h2 id="proposal-title">Proposed action</h2>
+          <p className="field-help">
+            This is what the agent asked to do. It is separate from the
+            authority granted above.
+          </p>
+          <StatusBadge value={proposalStage(run)} />
+          {run.analysis ? (
+            <p>
+              <span className="run-kicker">Model note</span>{" "}
+              {run.analysis.summary}
+            </p>
+          ) : (
+            <p>No completed model note is recorded yet.</p>
+          )}
+          {proposal ? (
+            <dl className="authority-facts">
+              <div>
+                <dt>Tool</dt>
+                <dd>{proposal.tool}</dd>
               </div>
-              <dl className="guard-ledger">
+              <div>
+                <dt>Target workspace</dt>
+                <dd className="run-code">{proposal.arguments.workspace_id}</dd>
+              </div>
+              <div>
+                <dt>Title</dt>
+                <dd>{proposal.arguments.title}</dd>
+              </div>
+              <div>
+                <dt>Body</dt>
+                <dd>{proposal.arguments.body}</dd>
+              </div>
+              {evidenceIds.length ? (
                 <div>
-                  <dt>Policy reasons</dt>
+                  <dt>Evidence used</dt>
                   <dd>
-                    {run.action.reasons.join(", ") ||
-                      "No policy reason persisted yet"}
+                    {evidenceIds.map((id) =>
+                      sourcesById.has(id) ? (
+                        <a key={id} href={`#evidence-${id}`}>
+                          {id.slice(0, 8)}{" "}
+                        </a>
+                      ) : (
+                        <span key={id}>{id.slice(0, 8)} </span>
+                      ),
+                    )}
                   </dd>
                 </div>
-                <div>
-                  <dt>Action digest</dt>
-                  <dd className="digest">{run.action.digest}</dd>
-                </div>
-              </dl>
-            </div>
+              ) : null}
+            </dl>
           ) : (
-            <p className="stage-empty">
-              No action has reached deterministic authorization.
-            </p>
+            <p>No action proposal is recorded.</p>
           )}
-        </section>
+        </div>
+      </section>
 
-        {run.review && !run.review.decision ? (
-          <section className="review-panel" aria-labelledby="review-title">
-            <p className="eyebrow">Exact-action review</p>
+      <section className="run-stage run-guard" aria-labelledby="guard-title">
+        <p className="run-stage-index">06 · Guard</p>
+        <div>
+          <h2 id="guard-title">Guard decision</h2>
+          <p className="field-help">
+            The deterministic guard compared the exact proposed action with the
+            sealed authority. The model note is not this decision.
+          </p>
+          {run.action ? (
+            <>
+              <StatusBadge value={guardStage(run)} />
+              <p className="run-decision">
+                {verdict === "ALLOW"
+                  ? "The deterministic guard allowed this exact proposed action."
+                  : verdict === "BLOCK"
+                    ? "Blocked before the prohibited side effect."
+                    : verdict === "REVIEW"
+                      ? "Execution has not occurred. An authorized reviewer must decide on this exact action."
+                      : "The guard has not recorded a verdict."}
+              </p>
+              {run.action.reasons.length ? (
+                <ul className="reason-list">
+                  {run.action.reasons.map((code) => (
+                    <li key={code}>
+                      <span>{reasonLabel(code)}</span>
+                      <span className="run-code">{code}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No guard reason is recorded yet.</p>
+              )}
+              <TechnicalDetails title="Action record">
+                <p className="run-code">{run.action.digest}</p>
+              </TechnicalDetails>
+            </>
+          ) : (
+            <p>No proposed action has reached the guard.</p>
+          )}
+        </div>
+      </section>
+
+      {run.review ? (
+        <section className="run-stage" aria-labelledby="review-title">
+          <p className="run-stage-index">07 · Review</p>
+          <div>
             <h2 id="review-title" ref={reviewHeading} tabIndex={-1}>
               Review this exact action
             </h2>
-            <p>
-              Review is required because{" "}
-              {run.action?.reasons.join(", ") || "the action is uncertain"}.
-              Approval binds only this digest. It cannot authorize a different
-              action or enlarge the Goal Lock.
-            </p>
-            <dl className="guard-ledger">
-              <div>
-                <dt>Tool</dt>
-                <dd>
-                  {proposal?.tool ?? "unavailable"}
-                  {proposal
-                    ? ` version ${String(run.goal_lock.tool_version ?? "unavailable")}`
-                    : ""}
-                </dd>
-              </div>
-              <div>
-                <dt>Action</dt>
-                <dd>{proposal?.arguments.title ?? "unavailable"}</dd>
-              </div>
-              <div>
-                <dt>Workspace</dt>
-                <dd>{proposal?.arguments.workspace_id ?? run.workspace_id}</dd>
-              </div>
-              <div>
-                <dt>Destination</dt>
-                <dd>{String(run.goal_lock.destination ?? "unavailable")}</dd>
-              </div>
-              <div>
-                <dt>Findings</dt>
-                <dd>
-                  {run.findings.map((finding) => finding.family).join(", ") ||
-                    "None persisted"}
-                </dd>
-              </div>
-            </dl>
-            <p className="digest">{run.review.digest}</p>
-            <p>Expires {new Date(run.review.expires_at).toLocaleString()}</p>
-            {run.review.eligible ? (
-              <div className="button-row">
-                <button
-                  className="button button-primary"
-                  disabled={pending}
-                  onClick={() => void review("approve")}
-                >
-                  Approve exact action
-                </button>
-                <button
-                  className="button button-danger"
-                  disabled={pending}
-                  onClick={() => void review("reject")}
-                >
-                  Reject
-                </button>
-              </div>
-            ) : (
+            {!run.review.decision ? (
               <p>
-                The requesting principal cannot approve this exact action. A
-                different active reviewer is required.
+                Execution has not occurred. Approval binds only this digest. It
+                does not widen the granted authority. The action is checked
+                again before execution.
               </p>
-            )}
-          </section>
-        ) : null}
-
-        <section
-          id="execution-outcome"
-          className="evidence-stage stage-outcome"
-          aria-labelledby="outcome-title"
-        >
-          <StageHeader
-            number="06"
-            kicker="Verified effect"
-            title="Execution Outcome"
-            state={outcomeState}
-          />
-          <div className="outcome-content">
-            {run.ticket ? (
+            ) : null}
+            <ol className="review-history">
+              <li>Review requested</li>
+              {run.review.decision ? (
+                <li>
+                  {run.review.decision === "approve" ? "Approved" : "Rejected"}
+                </li>
+              ) : observedAt !== null &&
+                new Date(run.review.expires_at).getTime() <= observedAt ? (
+                <li>Expired</li>
+              ) : (
+                <li>
+                  Waiting · expires{" "}
+                  {new Date(run.review.expires_at).toLocaleString()}
+                </li>
+              )}
+            </ol>
+            {!run.review.decision ? (
               <>
-                <div>
-                  <h3 id="outcome-title">
-                    {run.ticket.verified_at
-                      ? "Ticket persisted and read back"
-                      : "Ticket committed; verification pending"}
-                  </h3>
-                  <p>{run.ticket.title}</p>
-                  <p className="metadata">
-                    Created {new Date(run.ticket.created_at).toLocaleString()}
+                <p className="run-code">{run.review.digest}</p>
+                {run.review.eligible ? (
+                  <div className="button-row">
+                    <button
+                      className="button button-primary"
+                      disabled={pending}
+                      onClick={() => void review("approve")}
+                    >
+                      Approve exact action
+                    </button>
+                    <button
+                      className="button button-danger"
+                      disabled={pending}
+                      onClick={() => void review("reject")}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                ) : (
+                  <p>
+                    The requesting principal cannot approve this exact action. A
+                    different active reviewer is required.
                   </p>
-                </div>
-                <Link
-                  className="button button-primary"
-                  href={`/tickets/${run.ticket.id}`}
-                >
-                  {run.ticket.verified_at
-                    ? "Open verified ticket"
-                    : "Open committed ticket"}
-                </Link>
+                )}
               </>
-            ) : (
-              <div>
-                <h3 id="outcome-title">
-                  {run.state === "BLOCKED"
-                    ? "No privileged write occurred"
-                    : run.state === "NO_ACTION"
-                      ? "Analysis completed without an action"
-                      : run.state === "FAILED"
-                        ? "The run stopped without a verified action"
-                        : "Awaiting a terminal outcome"}
-                </h3>
-                <p>
-                  {run.state === "BLOCKED"
-                    ? "The Action Guard persisted its veto before the ticket dispatcher."
-                    : "VETOQ will display an outcome only after it is persisted and verified."}
-                </p>
-              </div>
-            )}
+            ) : null}
           </div>
         </section>
-      </div>
+      ) : null}
 
-      <section className="audit-panel" aria-labelledby="audit-title">
-        <header className="panel-heading">
-          <div>
-            <p className="eyebrow">Append-only application audit</p>
-            <h2 id="audit-title">Run timeline</h2>
-          </div>
-          <span>{events.length} persisted events</span>
-        </header>
-        <ol className="timeline">
-          {events.map((item) => (
-            <li key={item.sequence}>
-              <span>{item.sequence.toString().padStart(2, "0")}</span>
-              <div>
-                <strong>{item.type.replaceAll("_", " ")}</strong>
-                <time dateTime={item.created_at}>
-                  {new Date(item.created_at).toLocaleString()}
-                </time>
-              </div>
+      <section className="run-stage" aria-labelledby="outcome-title">
+        <p className="run-stage-index">08 · Effect</p>
+        <div>
+          <h2 id="outcome-title">What happened</h2>
+          <ol className="effect-stages">
+            <li>{proposal ? "Proposed" : "Not proposed"}</li>
+            <li>{verdict === "ALLOW" ? "Authorized" : "Not authorized"}</li>
+            <li>{run.ticket ? "Executed" : "Not executed"}</li>
+            <li>
+              {run.ticket?.verified_at
+                ? "Verified"
+                : "Verification not recorded"}
             </li>
-          ))}
-        </ol>
+          </ol>
+          {run.ticket ? (
+            <>
+              <h3>
+                {run.ticket.verified_at
+                  ? "Verified execution"
+                  : "Executed, verification not recorded"}
+              </h3>
+              <p>{run.ticket.title}</p>
+              <p className="field-help">
+                Created {new Date(run.ticket.created_at).toLocaleString()}
+                {run.ticket.verified_at
+                  ? ` · Verified ${new Date(run.ticket.verified_at).toLocaleString()}`
+                  : ""}
+              </p>
+              <Link
+                className="button button-secondary"
+                href={`/tickets/${run.ticket.id}`}
+              >
+                {run.ticket.verified_at
+                  ? "Open verified ticket"
+                  : "Open committed ticket"}
+              </Link>
+            </>
+          ) : (
+            <p>
+              {run.state === "BLOCKED"
+                ? "Blocked before the prohibited side effect. No privileged write occurred."
+                : run.state === "NO_ACTION"
+                  ? "The workflow completed without a business-side effect."
+                  : run.state === "FAILED"
+                    ? "No execution is recorded for this run."
+                    : "No execution is recorded yet."}
+            </p>
+          )}
+        </div>
       </section>
+
+      <details className="run-audit">
+        <summary>Audit timeline</summary>
+        <section aria-labelledby="audit-title">
+          <h2 id="audit-title">Run timeline</h2>
+          <p className="field-help">{events.length} persisted events</p>
+          <ol className="timeline">
+            {events.map((item) => (
+              <li key={item.sequence}>
+                <span>{item.sequence.toString().padStart(2, "0")}</span>
+                <div>
+                  <strong>{item.type.replaceAll("_", " ")}</strong>
+                  <time dateTime={item.created_at}>
+                    {new Date(item.created_at).toLocaleString()}
+                  </time>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+      </details>
+    </article>
+  );
+}
+
+function TechnicalDetails({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="technical-detail">
+      <button
+        className="text-button"
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        {title}
+      </button>
+      {open ? children : null}
     </div>
+  );
+}
+
+function EvidenceNode({
+  source,
+  edgesByParent,
+  sourcesById,
+  content,
+  openDetail,
+  onToggleDetail,
+  onLoad,
+}: {
+  source: Source;
+  edgesByParent: Map<string, Edge[]>;
+  sourcesById: Map<string, Source>;
+  content: Record<string, string>;
+  openDetail: Record<string, boolean>;
+  onToggleDetail: (id: string) => void;
+  onLoad: (id: string) => void;
+}) {
+  const outgoing = edgesByParent.get(source.id) ?? [];
+  const open = Boolean(openDetail[source.id]);
+  const loaded = content[source.id];
+  return (
+    <li>
+      <article
+        id={`evidence-${source.id}`}
+        aria-labelledby={`kind-${source.id}`}
+      >
+        <p id={`kind-${source.id}`} className="evidence-kind">
+          {representationLabel(source.representation_kind)}
+        </p>
+        <h3>{mediaLabel(source.declared_media_type)}</h3>
+        <p className="run-code">
+          {source.declared_media_type ?? "Not recorded"}
+          {source.representation_kind === null
+            ? " · Representation not recorded"
+            : ""}
+        </p>
+        <p>{source.complete ? "Complete" : "Incomplete"}</p>
+        <button
+          className="text-button"
+          type="button"
+          aria-expanded={Boolean(loaded)}
+          onClick={() => onLoad(source.id)}
+        >
+          {loaded ? "Protected text loaded" : "View protected text"}
+        </button>
+        {loaded ? <pre className="evidence-text">{loaded}</pre> : null}
+        <div className="technical-detail">
+          <button
+            className="text-button"
+            type="button"
+            aria-expanded={open}
+            onClick={() => onToggleDetail(source.id)}
+          >
+            Technical details
+          </button>
+          {open ? (
+            <dl className="authority-facts">
+              <div>
+                <dt>Digest</dt>
+                <dd className="run-code">{source.digest}</dd>
+              </div>
+              <div>
+                <dt>Bytes</dt>
+                <dd>{recorded(source.byte_size)}</dd>
+              </div>
+              <div>
+                <dt>Charset</dt>
+                <dd>{recorded(source.charset)}</dd>
+              </div>
+              <div>
+                <dt>Parser</dt>
+                <dd className="run-code">
+                  {source.parser_id && source.parser_version
+                    ? `${source.parser_id} / ${source.parser_version}`
+                    : "Not recorded"}
+                </dd>
+              </div>
+              <div>
+                <dt>Expires</dt>
+                <dd>{new Date(source.expires_at).toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt>Origin</dt>
+                <dd>{source.origin}</dd>
+              </div>
+            </dl>
+          ) : null}
+        </div>
+      </article>
+      {outgoing.length ? (
+        <ol className="derivation-list">
+          {outgoing.map((edge) => {
+            const child = sourcesById.get(edge.child_id);
+            return (
+              <li key={`${edge.parent_id}:${edge.child_id}:${edge.transform}`}>
+                <p className="derivation-summary">
+                  <span className="run-kicker">Derivation summary</span>
+                  {transformLabel(edge.transform)}
+                  <span className="run-code">
+                    {edge.transform}/{edge.version}
+                    {edge.lossy ? " · lossy" : ""}
+                  </span>
+                </p>
+                {edge.transform_steps === null ? (
+                  <p>Transform history not recorded</p>
+                ) : (
+                  <ol className="step-list">
+                    {edge.transform_steps.map((step, index) => (
+                      <li key={`${index}:${step.transform}:${step.version}`}>
+                        {transformLabel(step.transform)}
+                        <span className="run-code">
+                          {step.transform}/{step.version}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                {child ? (
+                  <ol className="evidence-tree">
+                    <EvidenceNode
+                      source={child}
+                      edgesByParent={edgesByParent}
+                      sourcesById={sourcesById}
+                      content={content}
+                      openDetail={openDetail}
+                      onToggleDetail={onToggleDetail}
+                      onLoad={onLoad}
+                    />
+                  </ol>
+                ) : (
+                  <p>The derived record is not in this response.</p>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      ) : null}
+    </li>
   );
 }

@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { SkipLink } from "@/components/skip-link";
 import "./globals.css";
 import "./vetoq.css";
+import "./public-experience.css";
 
 export const metadata: Metadata = {
   title: {

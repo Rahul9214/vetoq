@@ -72,14 +72,12 @@ export function HomeView({ initialUserId }: { initialUserId: string | null }) {
       <main id="main-content" tabIndex={-1} className="console-main page-shell">
         <section className="console-intro" aria-labelledby="console-title">
           <div>
-            <p className="eyebrow">Execution security / support triage</p>
-            <h1 id="console-title">
-              Verify the next action before it becomes an effect.
-            </h1>
+            <p className="eyebrow">Workbench</p>
+            <h1 id="console-title">Guarded execution workspace</h1>
           </div>
           <p>
-            Bind untrusted text to confirmed authority, inspect the proposal,
-            and preserve the outcome as audit evidence.
+            Define what the agent is allowed to accomplish, then provide the
+            untrusted content it may reason over.
           </p>
         </section>
         <Workbench />

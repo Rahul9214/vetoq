@@ -7,6 +7,13 @@ const allowedMethods = new Set(["GET", "POST"]);
 const segmentPattern = /^[A-Za-z0-9_-]+$/;
 const maxBodyBytes = 512 * 1024;
 const upstreamTimeoutMs = 10_000;
+const runFields = [
+  "workspace_id",
+  "goal",
+  "source",
+  "media_type",
+  "confirmed",
+] as const;
 
 function jsonError(code: string, status: number, correlationId: string) {
   return NextResponse.json(
@@ -29,6 +36,32 @@ function logFailure(event: string, correlationId: string, error: unknown) {
       detail: error instanceof Error ? redact(error.message) : "",
     }),
   );
+}
+
+function runSubmission(raw: string, correlationId: string) {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return jsonError("invalid_input", 422, correlationId);
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return jsonError("invalid_input", 422, correlationId);
+  }
+  const record = parsed as Record<string, unknown>;
+  const allowed = new Set<string>(runFields);
+  if (Object.keys(record).some((key) => !allowed.has(key))) {
+    return jsonError("invalid_input", 422, correlationId);
+  }
+  if (runFields.some((key) => !(key in record))) {
+    return jsonError("invalid_input", 422, correlationId);
+  }
+  if (typeof record.media_type !== "string" || record.media_type.length === 0) {
+    return jsonError("invalid_input", 422, correlationId);
+  }
+  const forwarded: Record<string, unknown> = {};
+  for (const key of runFields) forwarded[key] = record[key];
+  return JSON.stringify(forwarded);
 }
 
 function upstreamBase() {
@@ -106,11 +139,18 @@ async function forward(
       if (Number(request.headers.get("content-length") ?? 0) > maxBodyBytes) {
         return jsonError("input_limit", 413, correlationId);
       }
-      const body = await request.text();
-      if (new TextEncoder().encode(body).byteLength > maxBodyBytes) {
+      const raw = await request.text();
+      if (new TextEncoder().encode(raw).byteLength > maxBodyBytes) {
         return jsonError("input_limit", 413, correlationId);
       }
-      options.body = body;
+      if (path.length === 1 && path[0] === "runs") {
+        const submission = runSubmission(raw, correlationId);
+        if (submission instanceof NextResponse) return submission;
+        options.body = submission;
+        headers.set("Content-Type", "application/json");
+      } else {
+        options.body = raw;
+      }
     }
 
     let upstream: Response;
