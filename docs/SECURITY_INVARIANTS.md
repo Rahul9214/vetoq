@@ -37,7 +37,9 @@ Consequences:
 - A consequential proposal must reference persisted evidence.
 - Derived content keeps a parent edge. Transformation does not upgrade trust.
 - Unknown, incomplete, or unmapped evidence never enlarges authority.
-- Module 002 stores original pasted text and bounded derived text as `untrusted`. It does not store private chain-of-thought.
+- A derived representation is evidence under the original Goal Lock source. It is not another authority root.
+- A client assertion, including a claim that content was sanitized or classified, does not change `trust`. Server channel metadata does not grant authority.
+- Module 002 stores original pasted text and bounded derived text as `untrusted`. It does not store private chain-of-thought. M003 ingestion, when implemented, keeps that trust rule and does not treat an unsupported or incompletely parsed source as inspected.
 
 ## Action Guard
 

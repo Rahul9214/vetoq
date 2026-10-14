@@ -1,6 +1,143 @@
 # Agent handoff
 
-**Module 002 implementation complete; awaiting human review and manual Git workflow. No later module is authorized.**
+**M003 is GREEN B. INGEST-001 is IMPLEMENTED for adapter-governed ingestion of the five declared text formats, with unsupported formats failing closed. Do not start M004 without approval.**
+
+## M003 Slice K — release verification (15 October 2026)
+
+- Browser release tests use one origin, `http://localhost:3000`. `scripts/e2e-browser.mjs` starts a test API on `127.0.0.1:18010` and a worker against `VETOQ_TEST_DATABASE_URL`. It does not start port 3100 and it does not attach to the development server.
+- The development database `vetoq` stayed at Alembic `0004_edge_steps` and was not reset. A fresh disposable database migrated base → `0001_security_slice` → `0002_worker_claim` → `0003_secure_ingestion` → `0004_edge_steps` and was then dropped.
+- `pnpm verify` passed: Prettier, web lint, strict types, Vitest 57, production build, Ruff, mypy, Pytest 325 in 26.61s with no skips, and Playwright 111 across Chromium, Firefox, and WebKit in 9.5m.
+- One live Groq smoke on the disposable database completed an authorized local ticket and its read-back verification. That smoke is provider integration, not the security proof.
+- INGEST-001 is IMPLEMENTED with the sentence in change record 0001. MULTI-001 stays PLANNED. SEC-001, UX-001, and A11Y-001 stay PARTIAL. No manual screen-reader audit was performed. Scale, enterprise operations, and multi-agent analysis stay in later modules.
+
+## M003 Slice J — public and auth experience (15 October 2026)
+
+- The public page is an execution narrative: bounded authority, evidence, the proposed action, review, and verification. The hero is light and separate from the lavender closing field.
+- The lavender field sits immediately above the footer, with one call to action into sign-in. The footer names only real sections and account routes.
+- Sign-in and sign-up keep Clerk inside a VETOQ split shell. Submitted content stays untrusted. The page does not claim certification, multimodal ingestion, or live multi-agent analysis.
+- At the close of Slice J, INGEST-001 was still PARTIAL and Slice K had not started. The current status is the Slice K section above.
+
+## M003 I2 — run narrative (14 October 2026)
+
+- The run page reads from the persisted run: goal, Goal Lock, evidence graph, findings, proposal, guard verdict, review, ticket, and verification time. It does not recompute a decision.
+- Evidence is a parent-to-child list. `representation_kind` labels Original, Canonical text, Decoded text, or Active content. Null is Legacy evidence. `declared_media_type` null is Not recorded.
+- An edge summary stays separate from `transform_steps`. A null step list says the transform history was not recorded. Content opens as inert text.
+- INGEST-001 stays PARTIAL. MULTI-001 stays PLANNED. SEC-001 stays PARTIAL. UX-001 stays PARTIAL. A11Y-001 stays PARTIAL. Slice J is recorded above.
+
+## M003 I1 — authenticated Workbench (14 October 2026)
+
+- The signed-in Workbench is one workspace: intent, authority, untrusted content, then confirmation. It is not a stack of separate cards. Slice J later replaced the public homepage and auth shell.
+- The five pasted formats stay Plain text, JSON, Markdown, HTML, and Email (RFC822). Guidance is specific to the selection. Changing the format does not alter the pasted source. There is no upload, drop zone, or automatic detection.
+- Confirmation still sends `confirmed: true`. The copy says the user is confirming the goal, the authority, and untrusted content. It does not call the content safe or sanitized.
+- The primary action remains "Start guarded analysis". While the request is in flight the control says "Submitting…". Stable rejection codes stay visible beside a short explanation. The source is not copied into the error.
+- INGEST-001 stays PARTIAL. MULTI-001 stays PLANNED. SEC-001 stays PARTIAL. UX-001 stays PARTIAL. A11Y-001 stays PARTIAL. I2 is recorded above.
+
+## M003 H2B — live ingestion activation (14 October 2026)
+
+- `POST /api/v1/runs` calls `accept_declared_submission`. The server sets template `support-triage/1`. The client cannot send it. `media_type` is required and is normalized only by the kernel.
+- A body that still sends `sanitized`, `source_class`, `trust`, `parser_id`, `parser_version`, or `template` is `422 invalid_input` and creates no run.
+- The same idempotency key and the same normalized declaration return the same run. A different declared type with that key is `409 idempotency_conflict`.
+- Edge reads add `transform_steps`. A null count is `null`. A recorded count is the ordered `{transform, version}` list. The summary fields stay separate.
+- The BFF forwards only `workspace_id`, `goal`, `source`, `media_type`, and `confirmed` for `POST /runs`. The 512 KiB cap, origin check, and correlation id stay. There is no multipart upload.
+- The Workbench adds a native format select for the five labels. Confirmation still means the goal and the submission. It does not certify the content.
+- INGEST-001 stays PARTIAL. MULTI-001 stays PLANNED. SEC-001 stays PARTIAL. At H2B, Slice I had not started.
+- `uv run ruff check` passed. `uv run ruff format --check` passed. `uv run mypy` reported no issues in 52 source files. `uv run pytest` reported 325 passed. Web ESLint, strict `tsc`, Prettier on the changed files, and Vitest (34 tests) passed. `next build` passed. Targeted Chromium Playwright later passed in H2B1: 5 authenticated workbench tests, no skips, against `http://localhost:3000`. Root `pnpm verify` was not run.
+
+## M003 H2A — internal ingestion pipeline (14 October 2026)
+
+H2B later mounted the route described here. The notes below are the H2A worker behavior, which remains.
+
+- The worker treats a queued original as staged M003 only when `representation_kind` is `original` and `declared_media_type` is stored. Null metadata stays on the Module 002 path. The worker does not sniff the body.
+- Staged canonicalization persists each derived node, its summary edge, and the exact ordered steps in the claim transaction. Restart verifies those deterministic rows and does not insert a second copy. A mismatch fails closed.
+- New Base64 edges record `base64` / `1` as one step. The decoded node uses `representation_kind = decoded_text` and parser `bounded-decoder` version `1`. Historical edges stay null.
+- Derived representation count and derived UTF-8 bytes apply to adapter children and later Base64 children together. The original is outside that count. Overrun is `parser_limit_exceeded` and does not call the model.
+- At H2A the live route still rejected an M003 body. H2B mounted it. INGEST-001 stays PARTIAL. MULTI-001 stays PLANNED. SEC-001 stays PARTIAL.
+- `uv run ruff check` passed. `uv run ruff format --check` passed. `uv run mypy` reported no issues in 51 files. `uv run pytest` reported 312 passed. Playwright and `pnpm verify` were not run.
+
+## M003 H1 — edge transform-chain schema (14 October 2026)
+
+- Alembic head is `0004_edge_steps`. Readiness expects that revision. `0001`, `0002`, and `0003` were not edited. Downgrade is refused.
+- `content_edges.transform_step_count` is nullable. NULL means the chain was not recorded. 1 through 4 means that many ordered `content_edge_steps` rows. Historical edges stay NULL. There is no backfill.
+- The edge `transform` and `version` remain the summary. Step rows are the ordered history. They need not match. The worker, the Base64 writer, and the live route do not write steps yet.
+- The budget field is `transform_steps_per_edge` = 4. INGEST-001 stays PARTIAL. MULTI-001 stays PLANNED. SEC-001 stays PARTIAL.
+- Fresh database `vetoq_m003_migrate_test` migrated from base through `0004_edge_steps` and was dropped. `vetoq_test` and development `vetoq` then upgraded additively from `0003_secure_ingestion`. Development was not reset.
+- Before the upgrade, `vetoq` had workspaces 22, runs 13, content_nodes 14, content_edges 1, audit_events 69, and no `content_edge_steps` table. `vetoq_test` had workspaces 1228, runs 662, content_nodes 694, content_edges 29, audit_events 2939, and no `content_edge_steps` table.
+- After the upgrade both databases are at `0004_edge_steps` with those same five counts. `content_edge_steps` is 0. No edge has a non-null `transform_step_count`.
+- `uv run ruff check` passed. `uv run ruff format --check` passed. `uv run mypy` reported no issues in 49 files. `uv run pytest` reported 294 passed. Playwright and `pnpm verify` were not run.
+
+## M003 Slice G — API foundation (14 October 2026)
+
+Historical. H2B replaced the live body described in the first bullet.
+
+- At Slice G the live public body was still `goal`, `source`, `confirmed`, and `sanitized: true`. It did not accept `media_type` and it did not call an adapter.
+- `DeclaredSubmission` and `accept_declared_submission` require `media_type`, reject `sanitized` and `source_class`, validate with the registered adapter, and insert one original with truthful `0003` metadata. Parser id and version on that original are null. No derived child or edge is written.
+- The run read returns those metadata fields as stored, including null on Module 002 rows, and returns the run's `content_edges`. An empty edge list is empty.
+- Slice G did not store the ordered chain. H1 added `0004_edge_steps`. H2A is the worker that writes it for staged runs.
+- INGEST-001 stays PARTIAL. MULTI-001 stays PLANNED. SEC-001 stays PARTIAL.
+
+## M003 Slice F1 — pre-accept processability (14 October 2026)
+
+- Pre-accept validation of `html_inert` version `1`, `email_rfc822` version `1`, and `json_structured` version `1` proves the deterministic derived representation count and derived UTF-8 bytes. Exceeding either is `422 input_limit` and creates no run. The original source is outside the 32 derived representations. The budget field is `derived_representations_per_run`.
+- Canonicalization still raises `parser_limit_exceeded` if that proof is bypassed. Derived children carry an ordered `transform_steps` chain. Quoted-printable escapes are rejected before decode. Inline `style` and `meta` refresh are active evidence only. A supported empty email leaf is traversed and omitted. Top-level empty text and Markdown stay `empty_input`.
+- INGEST-001 stays PARTIAL. MULTI-001 stays PLANNED. SEC-001 stays PARTIAL. No migration, no content-node write, and no public format selection.
+
+## M003 Slice F — HTML and RFC822 adapters (14 October 2026)
+
+Status: the last two contracted adapters, awaiting human review. `POST /runs` is still the Module 002 body, including `sanitized: true`.
+
+- `html_inert` version `1` extracts lossy visible text and, when present, lossy active content. It does not execute HTML, fetch URLs, or emit an empty child.
+- `email_rfc822` version `1` rejects an unsupported leaf, charset, or transfer encoding for the whole message. `binary` and nested `message/rfc822` are unsupported. Header bytes and MIME part counts are pre-accept limits. Slice F1 moves the deterministic derived-byte and derived-representation budgets into that same pre-accept proof.
+- `text_plain` version `1`, `json_structured` version `1`, and `markdown` version `1` are unchanged. INGEST-001 stays PARTIAL. MULTI-001 stays PLANNED. No malware scan and no binary attachment support.
+
+## M003 Slice E — JSON and Markdown adapters (14 October 2026)
+
+Status: two more adapters, awaiting human review. `POST /runs` is still the Module 002 body, including `sanitized: true`.
+
+- `json_structured` version `1` validates strict JSON and returns one lossy `canonical_text` child. Depth is open containers. A member is one object pair or one array element, summed across the document.
+- `markdown` version `1` preserves the original text and returns no derived node. It does not render HTML.
+- `text_plain` version `1` is unchanged. HTML and RFC822 remained unresolved in this slice. INGEST-001 stays PARTIAL. MULTI-001 stays PLANNED.
+
+## M003 Slice D — text/plain adapter (14 October 2026)
+
+Status: one adapter, awaiting human review. `POST /runs` is still the Module 002 body, including `sanitized: true`.
+
+- `production_registry()` registers `text_plain` version `1` for `text/plain` only. The other four contract types resolve as internal `adapter_not_implemented`. That code is not a public API error.
+- Canonicalization succeeds with zero derived nodes. The original string is not copied into a child.
+- Parser version is outside the Goal Lock, `source_digest`, and submission identity. A newer parser does not reprocess an accepted run. Replay is not implemented.
+- INGEST-001 stays PARTIAL. MULTI-001 stays PLANNED.
+
+## M003 Slice C — ingestion kernel (14 October 2026)
+
+Status: kernel only, awaiting human review. No JSON, HTML, or RFC822 parser is registered. The running submission path is still Module 002.
+
+- Schema remains `0003_secure_ingestion`. Fresh, `vetoq_test`, and development `vetoq` match on content-node columns, checks, the immutability function, and the Alembic revision.
+- Budgets, declared-type normalization, the adapter registry, and the future submission identity live in `vetoq.ingestion`. The registry starts empty.
+- Parser version is not part of the Goal Lock and not part of that future submission identity.
+- INGEST-001 stays PARTIAL. MULTI-001 stays PLANNED.
+
+## M003 Slice B — schema (14 October 2026)
+
+Status: persistence only, awaiting human review. No parser, adapter registry, API body change, or UI change is included.
+
+- Alembic head is `0003_secure_ingestion`. Readiness expects that revision.
+- `content_nodes` gained nullable `declared_media_type`, `representation_kind`, `parser_id`, `parser_version`, `charset`, and `byte_size`. NULL on existing rows means not recorded.
+- INGEST-001 stays PARTIAL. MULTI-001 stays PLANNED.
+- A fresh database migrated from base through `0003_secure_ingestion` and was dropped. `vetoq_test` and development `vetoq` then upgraded additively from `0002_worker_claim`. Development row counts stayed workspaces 22, runs 13, content_nodes 14, content_edges 1, audit_events 69, and every existing content node stayed NULL on the new columns.
+- Focused Pytest passed 78 tests. Ruff and strict mypy passed. Playwright and `pnpm verify` were not run.
+
+## M003 Slice A — specification (13 October 2026)
+
+Status: specification complete, awaiting human review. No migration, API, worker, UI, or dependency change is included.
+
+- The normative spec is [modules/003-universal-secure-ingestion.md](modules/003-universal-secure-ingestion.md).
+- [ADR 0003](adr/0003-declared-format-ingestion.md) freezes declared-format adapters, one Goal Lock source, and PostgreSQL text storage.
+- [Change record 0001](change-control/0001-ingest-001-wording.md) holds the future INGEST-001 sentence. The registry row was not edited and stays PARTIAL.
+- MULTI-001 stays PLANNED. The supported set is `text/plain`, `application/json`, `text/markdown`, `text/html`, and `message/rfc822`.
+- The next implementation step, after review, is Slice B in that specification. The public-site redesign is Slice J.
+
+## Module 002 runtime baseline
+
+**Module 002 implementation is the verified runtime, awaiting any remaining human review and manual Git workflow.**
 
 Verified on **9 October 2026 (Asia/Calcutta)**. Read [the Module 002 verification record](modules/002-verification.md) for the acceptance table, provider observations, dependency rationale, test denominators, and limitations.
 
@@ -110,7 +247,7 @@ Use `pnpm db:migrate`, provision the Clerk subject with `pnpm admin:provision --
 
 Module 002 is text-only. It does not establish F3 or D3, statistical detector reliability, external tool protection, or public deployment readiness. The 27 attack and 20 benign fixtures are labeled engineering regressions, not operational metrics. Automated accessibility passed; manual screen-reader and true browser-zoom validation remain. Authenticated Playwright sign-in was not automated; the configured signed-out Clerk state is tested in all three engines, identity cryptography and workspace authorization have focused backend tests, and authenticated UI states have component tests.
 
-Human review and manual Git workflow are next. Do not begin multimodal ingestion, external integrations, evaluation expansion, deployment, or another module without approval. The hackathon deadline of 11 October 2026, 11:59 PM IST and the internal freeze of 8:00 PM IST are historical event dates.
+M003 Slice A is the authorized specification and is awaiting review. Do not begin Slice B, multimodal input, external integrations, evaluation expansion, or deployment from this handoff. The hackathon deadline of 11 October 2026, 11:59 PM IST and the internal freeze of 8:00 PM IST are historical event dates.
 
 ## Prior Module 001 handoff record
 
@@ -120,7 +257,7 @@ Verified on **8 October 2026 (Asia/Calcutta)**. The following is the historical 
 
 1. [PRODUCT_CONTRACT.md](PRODUCT_CONTRACT.md) and the rest of the hierarchy recorded there.
 2. AGENTS.md, README.md, and this handoff.
-3. The active module specification.
+3. The active module specification, [modules/003-universal-secure-ingestion.md](modules/003-universal-secure-ingestion.md). The Module 002 specification remains the runtime baseline.
 4. Applicable ADRs, then the older product, architecture, threat, security, evaluation, and design notes.
 5. Relevant source, tests, and the verification record.
 

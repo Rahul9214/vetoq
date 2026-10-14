@@ -40,6 +40,10 @@ Every visible operational state comes from the API or from a deterministic readi
 
 Status is text plus a symbol. Color is not the only signal.
 
+## Public composition
+
+The public hero is a light editorial execution boundary. It is not the lavender field. That field is the closing region immediately above the footer: large light type, one high-contrast action, and no card grid. Sign-in and sign-up keep Clerk inside a VETOQ shell. Illustrations on the public page are labeled as illustrations.
+
 ## Release bar
 
 Required CSS widths remain 320, 360, 390, 430, 768, 1024, 1280, 1440, and 1920. Accessibility targets WCAG 2.2 AA: semantic headings and controls, keyboard access, visible focus, contrast, reduced motion, and reflow. Automated checks do not by themselves prove conformance. Performance numbers in older design notes are targets, not measured results.

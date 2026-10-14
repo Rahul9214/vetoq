@@ -36,3 +36,9 @@ Agents do not silently change the rules below. A human approves the change befor
 - Starting the next roadmap module inside an unrelated change
 
 Routine bug fixes inside an approved module do not need a new ADR when they preserve these rules. The module specification still bounds the work.
+
+## Records
+
+| Record                                                                  | Subject             | Registry effect in Slice A                       |
+| ----------------------------------------------------------------------- | ------------------- | ------------------------------------------------ |
+| [0001-ingest-001-wording.md](change-control/0001-ingest-001-wording.md) | INGEST-001 sentence | Applied at M003 GREEN B. The row is IMPLEMENTED. |
