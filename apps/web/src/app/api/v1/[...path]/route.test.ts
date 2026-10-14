@@ -162,4 +162,107 @@ describe("same-origin BFF", () => {
     await expectContract(response, 413, "input_limit");
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("forwards only the declared-format submission", async () => {
+    signedIn();
+    fetchMock.mockResolvedValue(
+      Response.json({ id: "run-1" }, { status: 202 }),
+    );
+    const response = await call("POST", ["runs"], {
+      headers: {
+        origin: "http://localhost:3000",
+        "content-type": "text/plain",
+        "idempotency-key": "key-1",
+      },
+      body: JSON.stringify({
+        workspace_id: "workspace-1",
+        goal: "Create one ticket.",
+        source: "hello",
+        media_type: "text/plain; charset=UTF-8",
+        confirmed: true,
+      }),
+    });
+    expect(response.status).toBe(202);
+    const [target, init] = fetchMock.mock.calls[0]!;
+    expect(String(target)).toBe("http://127.0.0.1:18000/api/v1/runs");
+    const headers = new Headers(init?.headers);
+    expect(headers.get("x-request-id")).toMatch(/^[0-9a-f-]{36}$/);
+    expect(headers.get("idempotency-key")).toBe("key-1");
+    expect(headers.get("content-type")).toBe("application/json");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      workspace_id: "workspace-1",
+      goal: "Create one ticket.",
+      source: "hello",
+      media_type: "text/plain; charset=UTF-8",
+      confirmed: true,
+    });
+  });
+
+  it("rejects sanitized and other unauthorized submission fields", async () => {
+    signedIn();
+    const sentinel = "SENTINEL_BFF_SOURCE";
+    const response = await call("POST", ["runs"], {
+      headers: {
+        origin: "http://localhost:3000",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        workspace_id: "workspace-1",
+        goal: "Create one ticket.",
+        source: sentinel,
+        media_type: "text/plain",
+        confirmed: true,
+        sanitized: true,
+        source_class: "trusted",
+        template: "support-triage/1",
+      }),
+    });
+    const body = await expectContract(response, 422, "invalid_input");
+    expect(JSON.stringify(body)).not.toContain(sentinel);
+    expect(fetchMock).not.toHaveBeenCalled();
+    const logged = vi.mocked(console.error).mock.calls.flat().join(" ");
+    expect(logged).not.toContain(sentinel);
+  });
+
+  it("passes a structured ingestion error without the source body", async () => {
+    signedIn();
+    const sentinel = "SENTINEL_UPSTREAM_SOURCE";
+    fetchMock.mockResolvedValue(
+      Response.json(
+        { code: "malformed_content", message: "Request input is invalid." },
+        { status: 422 },
+      ),
+    );
+    const response = await call("POST", ["runs"], {
+      headers: {
+        origin: "http://localhost:3000",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        workspace_id: "workspace-1",
+        goal: "Create one ticket.",
+        source: sentinel,
+        media_type: "application/json",
+        confirmed: true,
+      }),
+    });
+    expect(response.status).toBe(422);
+    const body = await response.text();
+    expect(body).toContain("malformed_content");
+    expect(body).not.toContain(sentinel);
+    expect(String(fetchMock.mock.calls[0]?.[1]?.body)).toContain(sentinel);
+  });
+
+  it("leaves non-submission posts on the raw proxy path", async () => {
+    signedIn();
+    fetchMock.mockResolvedValue(Response.json({ state: "CANCELLED" }));
+    await call("POST", ["runs", "run-1", "cancel"], {
+      headers: {
+        origin: "http://localhost:3000",
+        "content-type": "application/json",
+      },
+      body: "{}",
+    });
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe("{}");
+  });
 });

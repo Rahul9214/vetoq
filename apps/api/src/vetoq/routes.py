@@ -1,15 +1,22 @@
-"""Authenticated, workspace-scoped Module 002 HTTP API."""
+"""Authenticated, workspace-scoped HTTP API."""
 
 from datetime import datetime
 from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
-from sqlalchemy import Engine
+from sqlalchemy import Connection, Engine
 
 from vetoq.auth import principal
-from vetoq.contracts import TERMINAL, ReviewDecision, Submission
+from vetoq.contracts import POLICY, TERMINAL, DeclaredSubmission, ReviewDecision, Submission
 from vetoq.db import execute, one, rows
-from vetoq.workflow import DomainError, event, locked_run, now, submit
+from vetoq.ingestion.contracts import TransformStep, recorded_transform_steps
+from vetoq.workflow import (
+    DomainError,
+    accept_declared_submission,
+    event,
+    locked_run,
+    now,
+)
 
 router = APIRouter(prefix="/api/v1")
 Principal = Annotated[str, Depends(principal)]
@@ -20,6 +27,64 @@ def engine(request: Request) -> Engine:
     if configured is None:
         raise HTTPException(503, "database_not_configured")
     return cast(Engine, configured)
+
+
+def run_edges(connection: Connection, run_id: str) -> list[dict[str, Any]]:
+    """Return summary edges plus the recorded step chain.
+
+    A null ``transform_step_count`` stays ``transform_steps: null``. The
+    summary transform is not copied into that list.
+    """
+
+    records = rows(
+        connection,
+        """
+        SELECT e.id, e.parent_id, e.child_id, e.transform, e.version, e.lossy,
+               e.transform_step_count, s.step_index,
+               s.transform AS step_transform, s.version AS step_version
+        FROM content_edges e
+        LEFT JOIN content_edge_steps s ON s.edge_id = e.id
+        WHERE e.run_id = :run
+        ORDER BY e.parent_id, e.child_id, s.step_index
+        """,
+        {"run": run_id},
+    )
+    ordered: list[str] = []
+    grouped: dict[str, dict[str, Any]] = {}
+    collected: dict[str, list[TransformStep]] = {}
+    for record in records:
+        edge_id = str(record["id"])
+        if edge_id not in grouped:
+            ordered.append(edge_id)
+            grouped[edge_id] = {
+                "parent_id": record["parent_id"],
+                "child_id": record["child_id"],
+                "transform": record["transform"],
+                "version": record["version"],
+                "lossy": record["lossy"],
+                "_count": record["transform_step_count"],
+            }
+            collected[edge_id] = []
+        if record["step_index"] is None:
+            continue
+        collected[edge_id].append(
+            TransformStep(str(record["step_transform"]), str(record["step_version"]))
+        )
+    edges: list[dict[str, Any]] = []
+    for edge_id in ordered:
+        payload = grouped[edge_id]
+        count = payload.pop("_count")
+        recorded = recorded_transform_steps(
+            None if count is None else int(count),
+            collected[edge_id],
+        )
+        payload["transform_steps"] = (
+            None
+            if recorded is None
+            else [{"transform": step.transform, "version": step.version} for step in recorded]
+        )
+        edges.append(payload)
+    return edges
 
 
 def fail(error: DomainError) -> None:
@@ -83,8 +148,16 @@ def create_run(
     request: Request,
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", max_length=128)],
 ) -> dict[str, str]:
+    declared = DeclaredSubmission(
+        workspace_id=body.workspace_id,
+        template=POLICY,
+        goal=body.goal,
+        source=body.source,
+        media_type=body.media_type,
+        confirmed=True,
+    )
     try:
-        run_id = submit(engine(request), actor, body, idempotency_key)
+        run_id = accept_declared_submission(engine(request), actor, declared, idempotency_key)
     except DomainError as error:
         fail(error)
     return {"id": run_id}
@@ -182,11 +255,14 @@ def get_run(run_id: str, actor: Principal, request: Request) -> dict[str, Any]:
         sources = rows(
             connection,
             """
-            SELECT id,origin,supplier,digest,trust,complete,created_at,expires_at
+            SELECT id,origin,supplier,digest,trust,complete,created_at,expires_at,
+                   declared_media_type,representation_kind,charset,byte_size,
+                   parser_id,parser_version
             FROM content_nodes WHERE run_id=:run ORDER BY created_at,id
             """,
             {"run": run_id},
         )
+        edges = run_edges(connection, run_id)
     return {
         "id": run["id"],
         "workspace_id": run["workspace_id"],
@@ -216,6 +292,7 @@ def get_run(run_id: str, actor: Principal, request: Request) -> dict[str, Any]:
         ),
         "ticket": ticket,
         "sources": sources,
+        "edges": edges,
     }
 
 
@@ -259,7 +336,9 @@ def get_content(
         item = one(
             connection,
             """
-            SELECT id,origin,supplier,digest,content,trust,complete,expires_at
+            SELECT id,origin,supplier,digest,content,trust,complete,expires_at,
+                   declared_media_type,representation_kind,charset,byte_size,
+                   parser_id,parser_version
             FROM content_nodes WHERE run_id=:run AND id=:node
             """,
             {"run": run_id, "node": node_id},

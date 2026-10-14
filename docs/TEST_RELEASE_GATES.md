@@ -44,6 +44,7 @@ GREEN A authorizes implementation of an approved slice. GREEN B is human accepta
 - A failing case is tested, not only the happy path.
 - Security capabilities include the denial path: wrong workspace, wrong principal, stale review, or failed closed provider, as applicable.
 - Database behavior is shown on the disposable test database, not on development data.
+- Browser release tests use `http://localhost:3000` and `scripts/e2e-browser.mjs`, which points the BFF at a test API and `VETOQ_TEST_DATABASE_URL`. They do not reuse the development server.
 - UI status claims are traced to API fields.
 
 PARTIAL is the correct word when only some of that evidence exists.

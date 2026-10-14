@@ -72,7 +72,7 @@ These are product direction. None of them is a current runtime capability.
 
 ## Roadmap
 
-The current module is M002. Do not start a later module without approval.
+M003, universal secure ingestion, is authorized. Slice A is the specification in [modules/003-universal-secure-ingestion.md](modules/003-universal-secure-ingestion.md). The verified runtime remains the Module 002 baseline until a later M003 slice changes it. Do not start M004, or a later module, without approval.
 
 | Module | Name                                                       |
 | ------ | ---------------------------------------------------------- |
@@ -97,43 +97,45 @@ Historical hackathon dates and the organizer F/D definitions remain context in [
 
 Status values are defined in [TEST_RELEASE_GATES.md](TEST_RELEASE_GATES.md). This table is the only capability registry. A capability is IMPLEMENTED only where the current tests and runtime support that row. IDs are stable. Removing, renaming, weakening, or materially reinterpreting an ID requires change control and an ADR.
 
-| ID           | Capability                                                                     | Status      |
-| ------------ | ------------------------------------------------------------------------------ | ----------- |
-| AUTH-001     | Server-authoritative authenticated principal                                   | IMPLEMENTED |
-| TENANT-001   | Active workspace membership and non-enumerating object isolation               | IMPLEMENTED |
-| GOAL-001     | Immutable Goal Lock for one confirmed support-triage envelope                  | IMPLEMENTED |
-| PROV-001     | Provenance-linked untrusted text, including bounded derived nodes              | PARTIAL     |
-| LINE-001     | Per-run audit sequence and execution receipt                                   | PARTIAL     |
-| INGEST-001   | Secure ingestion of confirmed pasted text                                      | PARTIAL     |
-| MULTI-001    | Heterogeneous multimodal input                                                 | PLANNED     |
-| THREAT-001   | Nine-family threat evidence from deterministic inspection plus one model stage | PARTIAL     |
-| INTENT-001   | Intent-alignment specialist                                                    | PLANNED     |
-| RISK-001     | Action-risk specialist                                                         | PLANNED     |
-| VERIFY-001   | Adversarial-verification specialist                                            | PLANNED     |
-| AGENT-001    | One provider-neutral analysis stage that cannot execute or grant authority     | IMPLEMENTED |
-| TOOL-001     | Closed tool identity, version, and destination                                 | PARTIAL     |
-| POLICY-001   | Versioned policy revision checked before execution                             | PARTIAL     |
-| GUARD-001    | Deterministic final Action Guard                                               | IMPLEMENTED |
-| REVIEW-001   | Exact-action review, expiry, single use, and separation of duties              | IMPLEMENTED |
-| EXEC-001     | Idempotent local `tickets.create` with read-back                               | IMPLEMENTED |
-| RECOVER-001  | Worker fencing, bounded provider retry, and per-run failure isolation          | IMPLEMENTED |
-| SHADOW-001   | Shadow Guard                                                                   | PLANNED     |
-| REPLAY-001   | Policy Replay                                                                  | PLANNED     |
-| EVAL-001     | Evaluation lab and operational efficacy metrics                                | PLANNED     |
-| ATTACK-001   | Demonstrated detection reliability across the nine official families           | PLANNED     |
-| MCP-001      | MCP integration                                                                | PLANNED     |
-| CONNECT-001  | Enterprise connectors outside the local ticket store                           | PLANNED     |
-| AUDIT-001    | Append-only audit for the application retention window                         | IMPLEMENTED |
-| INCIDENT-001 | Incident-response operations                                                   | PLANNED     |
-| OBS-001      | Production metrics, traces, and SLO reporting                                  | PARTIAL     |
-| SEC-001      | Production security program beyond the implemented slice controls              | PARTIAL     |
-| PERF-001     | Measured performance against a production baseline                             | PLANNED     |
-| UX-001       | Truthful product UI on the canonical visual foundation                         | PARTIAL     |
-| A11Y-001     | Release accessibility across required viewports and assistive technology       | PARTIAL     |
-| DEPLOY-001   | Production deployment and general availability                                 | PLANNED     |
+| ID           | Capability                                                                                                            | Status      |
+| ------------ | --------------------------------------------------------------------------------------------------------------------- | ----------- |
+| AUTH-001     | Server-authoritative authenticated principal                                                                          | IMPLEMENTED |
+| TENANT-001   | Active workspace membership and non-enumerating object isolation                                                      | IMPLEMENTED |
+| GOAL-001     | Immutable Goal Lock for one confirmed support-triage envelope                                                         | IMPLEMENTED |
+| PROV-001     | Provenance-linked untrusted text, including bounded derived nodes                                                     | PARTIAL     |
+| LINE-001     | Per-run audit sequence and execution receipt                                                                          | PARTIAL     |
+| INGEST-001   | Secure adapter-governed ingestion for explicitly supported declared formats, with unsupported formats failing closed. | IMPLEMENTED |
+| MULTI-001    | Heterogeneous multimodal input                                                                                        | PLANNED     |
+| THREAT-001   | Nine-family threat evidence from deterministic inspection plus one model stage                                        | PARTIAL     |
+| INTENT-001   | Intent-alignment specialist                                                                                           | PLANNED     |
+| RISK-001     | Action-risk specialist                                                                                                | PLANNED     |
+| VERIFY-001   | Adversarial-verification specialist                                                                                   | PLANNED     |
+| AGENT-001    | One provider-neutral analysis stage that cannot execute or grant authority                                            | IMPLEMENTED |
+| TOOL-001     | Closed tool identity, version, and destination                                                                        | PARTIAL     |
+| POLICY-001   | Versioned policy revision checked before execution                                                                    | PARTIAL     |
+| GUARD-001    | Deterministic final Action Guard                                                                                      | IMPLEMENTED |
+| REVIEW-001   | Exact-action review, expiry, single use, and separation of duties                                                     | IMPLEMENTED |
+| EXEC-001     | Idempotent local `tickets.create` with read-back                                                                      | IMPLEMENTED |
+| RECOVER-001  | Worker fencing, bounded provider retry, and per-run failure isolation                                                 | IMPLEMENTED |
+| SHADOW-001   | Shadow Guard                                                                                                          | PLANNED     |
+| REPLAY-001   | Policy Replay                                                                                                         | PLANNED     |
+| EVAL-001     | Evaluation lab and operational efficacy metrics                                                                       | PLANNED     |
+| ATTACK-001   | Demonstrated detection reliability across the nine official families                                                  | PLANNED     |
+| MCP-001      | MCP integration                                                                                                       | PLANNED     |
+| CONNECT-001  | Enterprise connectors outside the local ticket store                                                                  | PLANNED     |
+| AUDIT-001    | Append-only audit for the application retention window                                                                | IMPLEMENTED |
+| INCIDENT-001 | Incident-response operations                                                                                          | PLANNED     |
+| OBS-001      | Production metrics, traces, and SLO reporting                                                                         | PARTIAL     |
+| SEC-001      | Production security program beyond the implemented slice controls                                                     | PARTIAL     |
+| PERF-001     | Measured performance against a production baseline                                                                    | PLANNED     |
+| UX-001       | Truthful product UI on the canonical visual foundation                                                                | PARTIAL     |
+| A11Y-001     | Release accessibility across required viewports and assistive technology                                              | PARTIAL     |
+| DEPLOY-001   | Production deployment and general availability                                                                        | PLANNED     |
 
 EVAL-001 stays PLANNED. The 27 attack fixtures and 20 benign controls are labeled engineering regressions. They do not establish the evaluation lab or an efficacy metric. ATTACK-001 stays PLANNED because family coverage in fixtures and detectors is not demonstrated detection reliability.
 
+INGEST-001 is IMPLEMENTED for the approved sentence in [change-control/0001-ingest-001-wording.md](change-control/0001-ingest-001-wording.md). The live declarations are `text/plain`, `application/json`, `text/markdown`, `text/html`, and `message/rfc822`. Unsupported declarations fail closed. MULTI-001 stays PLANNED. The five text formats are not multimodal input. SEC-001, UX-001, and A11Y-001 stay PARTIAL.
+
 ## What VETOQ is not
 
-VETOQ is not a prompt-injection firewall, a chatbot, a SIEM, a DLP suite, an operating-system sandbox, or a proof of arbitrary natural-language intent. It does not protect tools that bypass the Action Guard. It does not claim F3, D3, universal detection, exactly-once external side effects, or a public deployment.
+VETOQ is not a prompt-injection firewall, a chatbot, a SIEM, a DLP suite, an operating-system sandbox, or a proof of arbitrary natural-language intent. It does not protect tools that bypass the Action Guard. It does not claim F3, D3, universal detection, exactly-once external side effects, malware scanning, or a public deployment. An unsupported media type is not inspected content.

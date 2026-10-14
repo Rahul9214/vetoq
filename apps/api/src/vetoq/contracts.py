@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from vetoq.ingestion.limits import BUDGETS
+
 POLICY: Final = "support-triage/1"
 TERMINAL = {"COMPLETED", "NO_ACTION", "BLOCKED", "FAILED", "CANCELLED", "EXPIRED"}
 FAMILIES = (
@@ -55,7 +57,7 @@ class Proposal(Strict):
     tool: str = Field(min_length=1, max_length=80)
     tool_version: int
     arguments: TicketArguments
-    evidence_ids: list[UUID] = Field(min_length=1, max_length=16)
+    evidence_ids: list[UUID] = Field(min_length=1, max_length=BUDGETS.proposal_evidence_ids)
 
 
 class ModelFinding(Strict):
@@ -83,12 +85,43 @@ class Analysis(Strict):
 
 
 class Submission(Strict):
+    """Live M003 body. The workflow template is server-owned.
+
+    `workspace_id` is the membership selection. `media_type` is the raw
+    declaration. The ingestion kernel normalizes it. There is no default type.
+    """
+
+    workspace_id: UUID
+    goal: str = Field(min_length=1, max_length=BUDGETS.goal_bytes)
+    source: str = Field(min_length=1, max_length=BUDGETS.source_bytes)
+    media_type: str = Field(min_length=1, max_length=256)
+    confirmed: Literal[True]
+
+
+class LegacySubmission(Strict):
+    """Historical Module 002 body. `POST /runs` does not accept it."""
+
     workspace_id: UUID
     template: Literal["support-triage/1"]
-    goal: str = Field(min_length=1, max_length=4096)
-    source: str = Field(min_length=1, max_length=65536)
+    goal: str = Field(min_length=1, max_length=BUDGETS.goal_bytes)
+    source: str = Field(min_length=1, max_length=BUDGETS.source_bytes)
     confirmed: Literal[True]
     sanitized: Literal[True]
+
+
+class DeclaredSubmission(Strict):
+    """Internal M003 body, including the server-owned template.
+
+    `media_type` is the raw declaration. The ingestion kernel normalizes it.
+    There is no default type. `sanitized` and `source_class` are not fields.
+    """
+
+    workspace_id: UUID
+    template: Literal["support-triage/1"]
+    goal: str = Field(min_length=1, max_length=BUDGETS.goal_bytes)
+    source: str = Field(min_length=1, max_length=BUDGETS.source_bytes)
+    media_type: str = Field(min_length=1, max_length=256)
+    confirmed: Literal[True]
 
 
 class ReviewDecision(Strict):

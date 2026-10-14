@@ -50,16 +50,19 @@ describe("VETOQ product shell", () => {
     render(<HomeView initialUserId={null} />);
     expect(screen.getAllByRole("main")).toHaveLength(1);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      /Trust the goal.*Verify the action/i,
+      /Give AI room to work/i,
     );
+    expect(
+      screen.getAllByText("Trust the Goal. Verify the Action.").length,
+    ).toBeGreaterThan(0);
     expect(screen.getAllByRole("banner").length).toBeGreaterThan(0);
     expect(screen.getByRole("contentinfo")).toBeInTheDocument();
     expect(
       screen.getAllByRole("link", { name: "Sign in" }).length,
     ).toBeGreaterThan(0);
     expect(
-      screen.getByRole("link", { name: "Start secure run" }),
-    ).toBeInTheDocument();
+      screen.getAllByRole("link", { name: "Open secure workbench" }).length,
+    ).toBeGreaterThan(0);
   });
 
   it("explains the full security boundary without fabricated results", () => {
@@ -68,14 +71,14 @@ describe("VETOQ product shell", () => {
     render(<HomeView initialUserId={null} />);
     expect(
       screen.getByRole("heading", {
-        name: "Content can request an action. It cannot authorize one.",
+        name: "Credentials do not answer whether this action was delegated.",
       }),
     ).toBeInTheDocument();
+    expect(screen.getByText("Product illustration")).toBeInTheDocument();
+    expect(screen.getByText("Illustrative execution path")).toBeInTheDocument();
     expect(
-      screen.getByText(/Illustration · not live telemetry/),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Indirect Prompt Injection")).toBeInTheDocument();
-    expect(screen.getAllByText("tickets.create")).toHaveLength(3);
+      screen.queryByText("Indirect Prompt Injection"),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("main")).toHaveAttribute("id", "main-content");
   });
 
@@ -87,11 +90,11 @@ describe("VETOQ product shell", () => {
       screen.getByRole("status", { name: "Loading VETOQ session" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("heading", { name: /Trust the goal/i }),
+      screen.queryByRole("heading", { name: /Give AI room to work/i }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("heading", {
-        name: "Verify the next action before it becomes an effect.",
+        name: "Guarded execution workspace",
       }),
     ).not.toBeInTheDocument();
   });
@@ -101,11 +104,11 @@ describe("VETOQ product shell", () => {
     authState.isSignedIn = false;
     render(<HomeView initialUserId="user_operator" />);
     expect(
-      screen.queryByRole("heading", { name: /Trust the goal/i }),
+      screen.queryByRole("heading", { name: /Give AI room to work/i }),
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole("heading", {
-        name: "Verify the next action before it becomes an effect.",
+        name: "Guarded execution workspace",
       }),
     ).toBeInTheDocument();
   });

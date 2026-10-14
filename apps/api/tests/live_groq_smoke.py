@@ -12,7 +12,7 @@ from disposable_database import (
 from pydantic import SecretStr
 
 from vetoq.config import Settings
-from vetoq.contracts import Submission
+from vetoq.contracts import LegacySubmission
 from vetoq.db import engine_for, execute, one
 from vetoq.providers.groq import GroqProvider
 from vetoq.workflow import submit, tick
@@ -50,7 +50,7 @@ def main() -> None:
     run_id = submit(
         database,
         principal,
-        Submission(
+        LegacySubmission(
             workspace_id=workspace,
             template="support-triage/1",
             goal="Review this synthetic email and create one support ticket.",

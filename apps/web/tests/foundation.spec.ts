@@ -10,13 +10,13 @@ for (const width of [320, 360, 390, 430, 768, 1024, 1280, 1440, 1920]) {
       await expect(
         page.getByRole("heading", {
           level: 1,
-          name: /Trust the goal\.\s*Verify the action\./i,
+          name: /Give AI room to work/i,
         }),
-      ).toBeVisible();
+      ).toBeVisible({ timeout: 20_000 });
       await expect(
         page.getByRole("heading", {
           level: 2,
-          name: "Content can request an action. It cannot authorize one.",
+          name: "Credentials do not answer whether this action was delegated.",
         }),
       ).toBeVisible();
       await expect(page.getByRole("banner")).toBeVisible();
@@ -42,7 +42,7 @@ test("configured Clerk reaches a usable signed-out state", async ({ page }) => {
     },
   );
   await expect(
-    page.getByRole("link", { name: "Start secure run" }),
+    page.getByRole("link", { name: "Open secure workbench" }).first(),
   ).toBeVisible();
 });
 test("keyboard skip link moves focus to main", async ({ page }) => {

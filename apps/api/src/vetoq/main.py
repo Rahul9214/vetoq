@@ -23,7 +23,7 @@ from vetoq.routes import router
 logger = logging.getLogger("vetoq.api")
 ERROR_CODE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 STATUS_CODES = {404: "not_found", 405: "method_not_allowed"}
-SCHEMA_REVISION = "0002_worker_claim"
+SCHEMA_REVISION = "0004_edge_steps"
 
 
 def request_correlation(value: str | None) -> str:

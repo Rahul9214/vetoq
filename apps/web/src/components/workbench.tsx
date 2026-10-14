@@ -10,13 +10,68 @@ import type { Me, RunSummary } from "@/lib/contracts";
 const defaultGoal =
   "Review this support email and create one support ticket in the confirmed workspace.";
 
+const declaredFormats = [
+  {
+    value: "text/plain",
+    label: "Plain text",
+    guidance: "Ordinary pasted text.",
+  },
+  {
+    value: "application/json",
+    label: "JSON",
+    guidance:
+      "Strict JSON. Duplicate keys and malformed structures are rejected.",
+  },
+  {
+    value: "text/markdown",
+    label: "Markdown",
+    guidance: "Markdown stays untrusted text and is not rendered.",
+  },
+  {
+    value: "text/html",
+    label: "HTML",
+    guidance: "HTML stays inert. Scripts and resources are not executed.",
+  },
+  {
+    value: "message/rfc822",
+    label: "Email (RFC822)",
+    guidance:
+      "Paste raw RFC822 or MIME source. Unsupported attachments are rejected.",
+  },
+] as const;
+
+const submissionMessages: Record<string, string> = {
+  malformed_content: "This content does not match the declared format.",
+  unsupported_media_type: "That declared format is not accepted.",
+  unsupported_embedded_content:
+    "An embedded part, charset, or transfer encoding in this message is not accepted.",
+  input_limit: "This submission exceeds an accepted size or structure limit.",
+  idempotency_conflict:
+    "This submission key was already used for a different goal, format, or content.",
+  invalid_input: "The submission could not be accepted as entered.",
+};
+
+export const confirmationLabel =
+  "I confirm this goal, this authority, and this untrusted submission.";
+
+function presentSubmissionError(raw: string) {
+  const code = /^[a-z0-9_]{1,64}$/.test(raw) ? raw : "submission_failed";
+  return {
+    code,
+    message: submissionMessages[code] ?? "The submission was not accepted.",
+  };
+}
+
 export function Workbench() {
   const router = useRouter();
   const errorId = useId();
+  const gateId = useId();
+  const errorRef = useRef<HTMLParagraphElement>(null);
   const idempotencyKey = useRef<string | null>(null);
   const [me, setMe] = useState<Me | null>(null);
   const [workspaceId, setWorkspaceId] = useState("");
   const [goal, setGoal] = useState(defaultGoal);
+  const [mediaType, setMediaType] = useState("");
   const [source, setSource] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [runs, setRuns] = useState<RunSummary[]>([]);
@@ -60,6 +115,11 @@ export function Workbench() {
       );
   }, [workspaceId]);
 
+  useEffect(() => {
+    if (!submitError) return;
+    errorRef.current?.focus();
+  }, [submitError]);
+
   function resetSubmissionIdentity() {
     idempotencyKey.current = null;
     setSubmitError("");
@@ -67,8 +127,14 @@ export function Workbench() {
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (pending || !confirmed || mediaType === "") return;
     setPending(true);
     setSubmitError("");
+    if (!declaredFormats.some((item) => item.value === mediaType)) {
+      setSubmitError("invalid_input");
+      setPending(false);
+      return;
+    }
     idempotencyKey.current ??= crypto.randomUUID();
     try {
       const result = await api<{ id: string }>("/runs", {
@@ -79,11 +145,10 @@ export function Workbench() {
         },
         body: JSON.stringify({
           workspace_id: workspaceId,
-          template: "support-triage/1",
           goal,
           source,
+          media_type: mediaType,
           confirmed: true,
-          sanitized: true,
         }),
       });
       idempotencyKey.current = null;
@@ -158,130 +223,194 @@ export function Workbench() {
 
   const workspace =
     me.workspaces.find((item) => item.id === workspaceId) ?? me.workspaces[0];
+  const selectedFormat = declaredFormats.find(
+    (item) => item.value === mediaType,
+  );
+  const presentedError = submitError
+    ? presentSubmissionError(submitError)
+    : null;
+  const gate = pending
+    ? "Submitting…"
+    : mediaType === ""
+      ? "Choose a declared format to continue."
+      : !confirmed
+        ? "Confirm the goal, the authority, and this untrusted submission."
+        : "The submission can be sent.";
+  const sourceDescribedBy = submitError
+    ? `source-help ${errorId}`
+    : "source-help";
 
   return (
     <div className="workbench">
-      <section
-        className="security-status"
-        aria-labelledby="security-status-title"
+      <form
+        className="workbench-form"
+        onSubmit={submit}
+        aria-busy={pending}
+        aria-describedby={submitError ? errorId : undefined}
       >
-        <div>
-          <p className="eyebrow">Current security state</p>
-          <h2 id="security-status-title">Ready for a goal-bound run</h2>
-        </div>
-        <div className="security-checks" role="list">
-          <div role="listitem">
-            <span aria-hidden="true">✓</span>
-            <strong>Identity verified</strong>
-            <small>Clerk session</small>
-          </div>
-          <div role="listitem">
-            <span aria-hidden="true">✓</span>
-            <strong>Workspace authorized</strong>
-            <small>{workspace?.name}</small>
-          </div>
-          <div role="listitem">
-            <span aria-hidden="true">•</span>
-            <strong>Policy revision</strong>
-            <small>{workspace?.policy_revision}</small>
-          </div>
-        </div>
-      </section>
+        <div className="workbench-intent">
+          <section className="workbench-goal" aria-labelledby="intent-title">
+            <p className="section-index">01 · Intent</p>
+            <h2 id="intent-title">What this run may accomplish</h2>
+            <p className="field-help" id="goal-help">
+              State the single outcome. Authority stays with this goal, not with
+              the content.
+            </p>
+            <label htmlFor="goal">Authorized goal</label>
+            <textarea
+              id="goal"
+              className="goal-field"
+              value={goal}
+              maxLength={4096}
+              required
+              aria-describedby="goal-help"
+              onChange={(event) => {
+                setGoal(event.target.value);
+                resetSubmissionIdentity();
+              }}
+            />
+          </section>
 
-      <div className="workbench-primary">
-        <section className="run-composer" aria-labelledby="submit-title">
-          <header className="panel-heading">
-            <div>
-              <p className="eyebrow">New security run</p>
-              <h2 id="submit-title">Confirm authority before analysis</h2>
-            </div>
-            <span className="step-count">01 / Goal Lock</span>
-          </header>
-          <form
-            onSubmit={submit}
-            aria-describedby={submitError ? errorId : undefined}
+          <section
+            className="workbench-authority"
+            aria-labelledby="authority-title"
           >
-            <div className="field-group">
-              <label htmlFor="workspace">Authorized workspace</label>
-              <p className="field-help">
-                The Action Guard binds every proposal to this destination.
-              </p>
-              <select
-                id="workspace"
-                value={workspaceId}
-                onChange={(event) => {
-                  setWorkspaceId(event.target.value);
-                  resetSubmissionIdentity();
-                }}
-              >
-                {me.workspaces.map((item) => (
-                  <option value={item.id} key={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field-group">
-              <label htmlFor="goal">Authorized goal</label>
-              <p className="field-help">
-                State the single outcome this run may pursue.
-              </p>
-              <textarea
-                id="goal"
-                value={goal}
-                maxLength={4096}
-                required
-                onChange={(event) => {
-                  setGoal(event.target.value);
-                  resetSubmissionIdentity();
-                }}
-              />
-            </div>
-            <div className="field-group">
-              <label htmlFor="source">Untrusted support-email text</label>
-              <p className="field-help">
-                Paste synthetic or sanitized content only. It remains untrusted.
-              </p>
-              <textarea
-                id="source"
-                className="source-field"
-                value={source}
-                maxLength={65536}
-                required
-                onChange={(event) => {
-                  setSource(event.target.value);
-                  resetSubmissionIdentity();
-                }}
-                placeholder="Paste the support request to inspect…"
-              />
-            </div>
-            <div className="goal-lock-preview" aria-label="Goal Lock preview">
-              <div className="lock-icon" aria-hidden="true">
-                ⌁
+            <p className="section-index">02 · Authority</p>
+            <h2 id="authority-title">Authority granted for that goal</h2>
+            <p className="field-help" id="authority-help">
+              Membership selects the workspace. The server checks it. Content
+              cannot widen this scope.
+            </p>
+            <dl className="authority-facts">
+              <div>
+                <dt>Tool</dt>
+                <dd>{me.template.tool}</dd>
               </div>
               <div>
-                <strong>Goal Lock</strong>
-                <span>Immutable before model analysis</span>
+                <dt>Destination</dt>
+                <dd>{me.template.destination}</dd>
               </div>
-              <dl>
-                <div>
-                  <dt>Tool</dt>
-                  <dd>{me.template.tool}</dd>
-                </div>
-                <div>
-                  <dt>Destination</dt>
-                  <dd>{me.template.destination}</dd>
-                </div>
-                <div>
-                  <dt>Limit</dt>
-                  <dd>{me.template.max_writes} write</dd>
-                </div>
-                <div>
-                  <dt>Expiry</dt>
-                  <dd>{me.template.expires_minutes} min</dd>
-                </div>
-              </dl>
+              <div>
+                <dt>Writes</dt>
+                <dd>{me.template.max_writes}</dd>
+              </div>
+              <div>
+                <dt>Expires</dt>
+                <dd>{me.template.expires_minutes} min</dd>
+              </div>
+              <div>
+                <dt>Policy</dt>
+                <dd>{workspace?.policy_revision}</dd>
+              </div>
+              <div>
+                <dt>Role</dt>
+                <dd>{workspace?.role}</dd>
+              </div>
+            </dl>
+            <label htmlFor="workspace">Authorized workspace</label>
+            <select
+              id="workspace"
+              value={workspaceId}
+              aria-describedby="authority-help"
+              onChange={(event) => {
+                setWorkspaceId(event.target.value);
+                resetSubmissionIdentity();
+              }}
+            >
+              {me.workspaces.map((item) => (
+                <option value={item.id} key={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+            <p className="authority-note">
+              A proposal can recommend an action. It cannot grant this
+              authority.
+            </p>
+          </section>
+        </div>
+
+        <section className="workbench-content">
+          <div className="workbench-content-layout">
+            <div>
+              <p className="section-index">03 · Content</p>
+              <h2 id="content-title">Untrusted business content</h2>
+              <div className="field-group">
+                <label htmlFor="media-type">Declared format</label>
+                <p id="format-help" className="field-help">
+                  Choose how this paste should be read. The content stays
+                  untrusted. Nothing here detects a format for you.
+                </p>
+                <select
+                  id="media-type"
+                  value={mediaType}
+                  required
+                  aria-describedby="format-help format-guidance format-choice"
+                  onChange={(event) => {
+                    setMediaType(event.target.value);
+                    resetSubmissionIdentity();
+                  }}
+                >
+                  <option value="">Select a format</option>
+                  {declaredFormats.map((item) => (
+                    <option value={item.value} key={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+                <p id="format-choice" className="format-choice">
+                  <span>Selected</span>
+                  <strong>
+                    {selectedFormat?.label ?? "No format selected"}
+                  </strong>
+                </p>
+                <p id="format-guidance" className="field-help">
+                  {selectedFormat?.guidance ??
+                    "A format is required. There is no default."}
+                </p>
+              </div>
+              <div className="field-group">
+                <p id="source-help" className="field-help">
+                  Paste the content in the declared format. It remains untrusted
+                  text.
+                </p>
+                <textarea
+                  id="source"
+                  className={
+                    mediaType === "" || mediaType === "text/plain"
+                      ? "source-field source-field--prose"
+                      : "source-field"
+                  }
+                  value={source}
+                  maxLength={65536}
+                  required
+                  aria-labelledby="content-title"
+                  aria-invalid={submitError ? true : undefined}
+                  aria-describedby={sourceDescribedBy}
+                  onChange={(event) => {
+                    setSource(event.target.value);
+                    resetSubmissionIdentity();
+                  }}
+                  placeholder="Paste untrusted content in the declared format"
+                />
+              </div>
             </div>
+            <aside className="content-aside" aria-label="Content boundary">
+              <p>Content is untrusted.</p>
+              <p>Authority comes from the goal and the scope above.</p>
+            </aside>
+          </div>
+        </section>
+
+        <section className="workbench-confirm" aria-labelledby="confirm-title">
+          <div>
+            <p className="section-index">04 · Confirm</p>
+            <h2 id="confirm-title">Confirm and submit</h2>
+            <p className="field-help">
+              Confirm the intended goal, the authority above, and the submission
+              of untrusted content. This does not mean the content is safe,
+              sanitized, or trustworthy.
+            </p>
             <label className="check-row">
               <input
                 type="checkbox"
@@ -289,54 +418,42 @@ export function Workbench() {
                 onChange={(event) => setConfirmed(event.target.checked)}
                 required
               />
-              <span>
-                I confirm this exact scope and that the source is synthetic or
-                sanitized.
-              </span>
+              <span>{confirmationLabel}</span>
             </label>
-            {submitError ? (
-              <p id={errorId} className="form-error" role="alert">
-                {submitError}
+          </div>
+          <div className="workbench-action">
+            {presentedError ? (
+              <p
+                id={errorId}
+                ref={errorRef}
+                className="form-error"
+                role="alert"
+                tabIndex={-1}
+              >
+                <span className="form-error-message">
+                  {presentedError.message}
+                </span>
+                <span className="form-error-code">{presentedError.code}</span>
               </p>
             ) : null}
+            <p id={gateId} className="submit-gate">
+              {gate}
+            </p>
             <button
-              className="button button-primary submit-button"
-              disabled={!confirmed || pending}
+              className="button submit-button"
+              disabled={!confirmed || mediaType === "" || pending}
               type="submit"
+              aria-describedby={submitError ? `${gateId} ${errorId}` : gateId}
             >
-              {pending ? "Persisting Goal Lock…" : "Start guarded analysis"}
-              <span aria-hidden="true">→</span>
+              {pending ? "Submitting…" : "Start guarded analysis"}
             </button>
-          </form>
-        </section>
-
-        <aside className="boundary-panel" aria-labelledby="boundary-title">
-          <p className="eyebrow">Execution boundary</p>
-          <h2 id="boundary-title">
-            The model cannot authorize its own proposal.
-          </h2>
-          <div className="boundary-route" aria-label="Authority path">
-            <span>Untrusted source</span>
-            <i aria-hidden="true">↓</i>
-            <span>AI evidence</span>
-            <i aria-hidden="true">↓</i>
-            <strong>Deterministic Action Guard</strong>
-            <i aria-hidden="true">↓</i>
-            <span>Verified local ticket</span>
           </div>
-          <p className="boundary-note">
-            Unknown tools, changed arguments, stale approval, or a different
-            workspace fail closed.
-          </p>
-        </aside>
-      </div>
+        </section>
+      </form>
 
       <section className="recent-runs" aria-labelledby="recent-title">
-        <header className="panel-heading">
-          <div>
-            <p className="eyebrow">Persistent evidence</p>
-            <h2 id="recent-title">Recent runs</h2>
-          </div>
+        <header className="recent-runs-heading">
+          <h2 id="recent-title">Recent runs</h2>
           <span>{workspace?.name}</span>
         </header>
         {runsError ? (
@@ -346,7 +463,6 @@ export function Workbench() {
         ) : null}
         {!runsError && runs.length === 0 ? (
           <div className="runs-empty">
-            <span aria-hidden="true">◇</span>
             <p>No runs exist in this workspace yet.</p>
           </div>
         ) : (
@@ -359,9 +475,6 @@ export function Workbench() {
                   <time dateTime={run.created_at}>
                     {new Date(run.created_at).toLocaleString()}
                   </time>
-                  <span className="row-arrow" aria-hidden="true">
-                    ↗
-                  </span>
                 </Link>
               </li>
             ))}

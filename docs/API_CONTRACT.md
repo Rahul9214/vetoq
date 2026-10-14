@@ -25,19 +25,19 @@ Validation uses `invalid_input` and the message `Request input is invalid.` The 
 
 ## Implemented routes
 
-| Method | Path                                      | Success | Notes                                                                |
-| ------ | ----------------------------------------- | ------- | -------------------------------------------------------------------- |
-| GET    | `/health/live`                            | 200     | Process liveness. Not a product authorization route                  |
-| GET    | `/health/ready`                           | 200     | PostgreSQL reachable and revision `0002_worker_claim`. Otherwise 503 |
-| GET    | `/api/v1/me`                              | 200     | Principal, access, workspaces, and the support-triage template       |
-| POST   | `/api/v1/runs`                            | 202     | Requires `Idempotency-Key`, `confirmed: true`, and `sanitized: true` |
-| GET    | `/api/v1/runs?workspace_id=&before=`      | 200     | Newest 25. `next_cursor` is set only when the page is full           |
-| GET    | `/api/v1/runs/{run_id}`                   | 200     | Run, Goal Lock, analysis, findings, action, review, ticket, sources  |
-| GET    | `/api/v1/runs/{run_id}/events?after=`     | 200     | Up to 100 events with `sequence` greater than `after`                |
-| GET    | `/api/v1/runs/{run_id}/content/{node_id}` | 200     | Active content for a visible run. Expired content is 410             |
-| POST   | `/api/v1/runs/{run_id}/cancel`            | 200     | Originator only                                                      |
-| POST   | `/api/v1/reviews/{review_id}/decision`    | 200     | Body is the 64-character digest and `approve` or `reject`            |
-| GET    | `/api/v1/tickets/{ticket_id}`             | 200     | Ticket fields plus `verified_at` from the execution                  |
+| Method | Path                                      | Success | Notes                                                                      |
+| ------ | ----------------------------------------- | ------- | -------------------------------------------------------------------------- |
+| GET    | `/health/live`                            | 200     | Process liveness. Not a product authorization route                        |
+| GET    | `/health/ready`                           | 200     | PostgreSQL reachable and revision `0004_edge_steps`. Otherwise 503         |
+| GET    | `/api/v1/me`                              | 200     | Principal, access, workspaces, and the support-triage template             |
+| POST   | `/api/v1/runs`                            | 202     | Requires `Idempotency-Key`, `media_type`, and `confirmed: true`            |
+| GET    | `/api/v1/runs?workspace_id=&before=`      | 200     | Newest 25. `next_cursor` is set only when the page is full                 |
+| GET    | `/api/v1/runs/{run_id}`                   | 200     | Run, Goal Lock, analysis, findings, action, review, ticket, sources, edges |
+| GET    | `/api/v1/runs/{run_id}/events?after=`     | 200     | Up to 100 events with `sequence` greater than `after`                      |
+| GET    | `/api/v1/runs/{run_id}/content/{node_id}` | 200     | Active content for a visible run. Expired content is 410                   |
+| POST   | `/api/v1/runs/{run_id}/cancel`            | 200     | Originator only                                                            |
+| POST   | `/api/v1/reviews/{review_id}/decision`    | 200     | Body is the 64-character digest and `approve` or `reject`                  |
+| GET    | `/api/v1/tickets/{ticket_id}`             | 200     | Ticket fields plus `verified_at` from the execution                        |
 
 The BFF allows GET and POST only. A foreign origin on POST is `403 invalid_origin`. Bodies larger than 512 KiB are `413 input_limit`. A non-JSON upstream body is `502 invalid_upstream_response`. Upstream timeout is `504 api_timeout`.
 
@@ -65,3 +65,29 @@ Cancel updates a non-terminal run to `CANCELLED` and audits it. The response `st
 A full event page's `next_cursor` is the last sequence. An empty page returns the requested `after` cursor. Run-list `before` is a timestamp, not an opaque token.
 
 No other product endpoints are implemented.
+
+## Live M003 submission
+
+The live body is `workspace_id`, `goal`, `source`, `media_type`, and `confirmed: true`. `workspace_id` is the authenticated membership selection. The workflow template is server-owned and is not a client field. `media_type` is required. A missing value does not become `text/plain`. Supported declarations are `text/plain`, `application/json`, `text/markdown`, `text/html`, and `message/rfc822`. The kernel normalizes charset spelling. The API and the BFF do not.
+
+`sanitized`, `source_class`, `trust`, `parser_id`, `parser_version`, `template`, and `channel` are rejected as `422 invalid_input`. There is no compatibility branch. A rejected body creates no run, Goal Lock, content node, or inspection audit.
+
+`accept_declared_submission` is the live writer. It validates with the registered adapter before insert. The worker then canonicalizes that staged original. A historical row whose ingestion metadata is null stays on the Module 002 worker path. Those rows are not rewritten.
+
+The run read includes, on each source and on the content response, `declared_media_type`, `representation_kind`, `charset`, `byte_size`, `parser_id`, `parser_version`, and `complete`. Null means the fact was not recorded. The response does not fill nulls with `text/plain`, `utf-8`, or `original`. Each edge returns `parent_id`, `child_id`, `transform`, `version`, and `lossy` as the derivation summary, plus `transform_steps`. A null stored count returns `transform_steps: null`. A recorded count returns that many `{transform, version}` objects in `step_index` order. The response does not include `edge_id` or `step_index`, and it does not invent steps from the summary. A run with no edges returns an empty list. `channel` is not a response field. The acceptance audit sets it to `user_paste`.
+
+There is no file upload, multipart body, or remote fetch. PDF, Office, images, audio, archives, URLs, MCP, and arbitrary binary are unsupported. Ingestion is not malware scanning.
+
+`source_digest` is SHA-256 of the UTF-8 encoding of the validated source string. It is not a hash of the HTTP JSON bytes. The normalized declared media type is part of the staged submission digest and is not a Goal Lock field. The same source text declared as `text/plain` and as `text/html` are different idempotent submissions. Budgets are the single table in the module specification. Content responses stay JSON text with `nosniff`. Submitted HTML is not returned as `text/html`.
+
+Additional pre-accept codes, with no run and no inspection audit:
+
+| Status | Code                           | When                                                                                                                                       |
+| ------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| 422    | `unsupported_media_type`       | Declared type outside the five                                                                                                             |
+| 422    | `malformed_content`            | Malformed JSON, duplicate keys, non-finite numbers, invalid structure, malformed quoted-printable, or an email leaf that does not decode   |
+| 422    | `unsupported_embedded_content` | An embedded MIME leaf, charset, or transfer encoding outside the supported set                                                             |
+| 422    | `input_limit`                  | JSON nesting, JSON members, HTML tags or attributes, email header or MIME part budget, derived representation count, or derived text bytes |
+| 413    | `input_limit`                  | Goal bytes, source bytes, or the existing 512 KiB BFF body                                                                                 |
+
+Post-accept ingestion failure is a persisted `FAILED` run whose `failure` is `parser_limit_exceeded`, `ingestion_incomplete`, `source_integrity_failure`, or `canonicalization_failure`. `parser_limit_exceeded` is the defense-in-depth code for a budget that validation already proved, and for later bounded Base64 derivation. It does not enter `PROPOSING`, call the model, or ALLOW. `unsupported_embedded_content` is not a run-failure code. No new route, multipart body, or upload is added. The BFF stays JSON, 512 KiB, and GET/POST only. A pre-accept 4xx does not consume the 30 accepted-run quota.

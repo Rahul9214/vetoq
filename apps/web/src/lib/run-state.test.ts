@@ -44,8 +44,15 @@ const run = {
       trust: "untrusted" as const,
       complete: true,
       expires_at: "2026-10-13T00:00:00Z",
+      declared_media_type: null,
+      representation_kind: null,
+      charset: null,
+      byte_size: null,
+      parser_id: null,
+      parser_version: null,
     },
   ],
+  edges: [],
 } satisfies RunDetail;
 
 describe("persisted run stage labels", () => {

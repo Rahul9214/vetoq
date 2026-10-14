@@ -8,11 +8,32 @@ from threading import Event
 from typing import Any
 from uuid import uuid4
 
+from pydantic import ValidationError
 from sqlalchemy import Connection, Engine
 
 from vetoq.action_guard import GuardInput, guard
-from vetoq.contracts import POLICY, TERMINAL, GoalLock, Proposal, Submission, action_digest, digest
+from vetoq.contracts import (
+    POLICY,
+    TERMINAL,
+    DeclaredSubmission,
+    GoalLock,
+    LegacySubmission,
+    Proposal,
+    action_digest,
+    digest,
+)
 from vetoq.db import execute, one, rows
+from vetoq.ingestion.errors import IngestionError, ProcessingFailure, RegistryError
+from vetoq.ingestion.identity import SubmissionIdentity, source_digest, submission_digest
+from vetoq.ingestion.limits import BUDGETS
+from vetoq.ingestion.media_types import normalize_media_type, stored_media_type
+from vetoq.ingestion.pipeline import (
+    ingest_staged,
+    is_staged_original,
+    legacy_metadata_absent,
+    persist_recorded_base64,
+)
+from vetoq.ingestion.registry import AdapterRegistry, production_registry
 from vetoq.inspection import content_digest, inspect
 from vetoq.providers.base import InferenceRequest, Provider, ProviderError
 
@@ -64,11 +85,12 @@ def member(c: Connection, workspace: str, principal: str, lock: bool = False) ->
     return row
 
 
-def submit(engine: Engine, principal: str, request: Submission, key: str) -> str:
+def submit(engine: Engine, principal: str, request: LegacySubmission, key: str) -> str:
+    """Persist one historical Module 002 row. The live route does not call this."""
     if (
         not 1 <= len(key) <= 128
-        or len(request.goal.encode()) > 4096
-        or len(request.source.encode()) > 65536
+        or len(request.goal.encode()) > BUDGETS.goal_bytes
+        or len(request.source.encode()) > BUDGETS.source_bytes
     ):
         raise DomainError("input_limit", 413)
     if not request.goal.strip() or not request.source.strip():
@@ -94,7 +116,7 @@ def submit(engine: Engine, principal: str, request: Submission, key: str) -> str
             """,
             {"w": workspace},
         )
-        if count and count["n"] >= 30:
+        if count and count["n"] >= BUDGETS.accepted_runs_per_workspace_per_hour:
             raise DomainError("workspace_rate_limit", 429)
         run_id, source_id = uid(), uid()
         expiry = now() + timedelta(minutes=30)
@@ -152,6 +174,151 @@ def submit(engine: Engine, principal: str, request: Submission, key: str) -> str
         return run_id
 
 
+def load_declared_submission(payload: object) -> DeclaredSubmission:
+    """Parse the staged M003 body. The error carries the code and not the source."""
+
+    try:
+        return DeclaredSubmission.model_validate(payload)
+    except ValidationError:
+        raise DomainError("invalid_input", 422) from None
+
+
+def accept_declared_submission(
+    engine: Engine,
+    principal: str,
+    request: DeclaredSubmission,
+    key: str,
+    *,
+    registry: AdapterRegistry | None = None,
+) -> str:
+    """Persist one original after pre-accept validation.
+
+    `POST /runs` builds a `DeclaredSubmission` with the server-owned template
+    and calls this function. The worker canonicalizes a queued original when
+    that stored row is staged M003 metadata. A validation failure rolls the
+    transaction back and writes no run, node, Goal Lock, or audit event.
+    """
+
+    selected = production_registry() if registry is None else registry
+    workspace = str(request.workspace_id)
+    with engine.begin() as c:
+        member(c, workspace, principal, True)
+        if (
+            not 1 <= len(key) <= 128
+            or len(request.goal.encode()) > BUDGETS.goal_bytes
+            or len(request.source.encode()) > BUDGETS.source_bytes
+        ):
+            raise DomainError("input_limit", 413)
+        if not request.goal.strip() or not request.source.strip():
+            raise DomainError("empty_input", 422)
+        try:
+            declaration = normalize_media_type(request.media_type)
+            adapter = selected.resolve(declaration.media_type)
+            exact = adapter.validate(request.source, declaration)
+        except RegistryError:
+            raise DomainError("internal_error", 500) from None
+        except IngestionError as error:
+            raise DomainError(error.code, error.status) from None
+        identity = SubmissionIdentity(
+            workspace_id=request.workspace_id,
+            template=request.template,
+            goal=request.goal,
+            source=exact,
+            confirmed=request.confirmed,
+            declared_media_type=declaration.media_type,
+        )
+        fingerprint = submission_digest(identity)
+        existing = one(
+            c,
+            "SELECT * FROM runs WHERE workspace_id=:w AND principal=:p AND submission_key=:k",
+            {"w": workspace, "p": principal, "k": key},
+        )
+        if existing:
+            if existing["submission_digest"] != fingerprint:
+                raise DomainError("idempotency_conflict")
+            return str(existing["id"])
+        count = one(
+            c,
+            """
+            SELECT count(*) AS n FROM runs
+            WHERE workspace_id=:w AND created_at>now()-interval '1 hour'
+            """,
+            {"w": workspace},
+        )
+        if count and count["n"] >= BUDGETS.accepted_runs_per_workspace_per_hour:
+            raise DomainError("workspace_rate_limit", 429)
+        run_id, source_id = uid(), uid()
+        expiry = now() + timedelta(minutes=30)
+        digest_value = source_digest(exact)
+        envelope = GoalLock(
+            principal=principal,
+            workspace_id=request.workspace_id,
+            source_id=source_id,
+            source_digest=digest_value,
+            goal=request.goal,
+            expires_at=expiry,
+        )
+        execute(
+            c,
+            """
+            INSERT INTO runs(
+                id,workspace_id,principal,submission_key,submission_digest,
+                envelope,state,expires_at
+            ) VALUES(:r,:w,:p,:k,:d,CAST(:g AS jsonb),'QUEUED',:e)
+            """,
+            {
+                "r": run_id,
+                "w": workspace,
+                "p": principal,
+                "k": key,
+                "d": fingerprint,
+                "g": envelope.model_dump_json(),
+                "e": expiry,
+            },
+        )
+        execute(
+            c,
+            """
+            INSERT INTO content_nodes(
+                id,workspace_id,run_id,origin,supplier,digest,content,
+                trust,complete,expires_at,
+                declared_media_type,representation_kind,parser_id,parser_version,
+                charset,byte_size
+            ) VALUES(
+                :id,:w,:r,'pasted-email',:p,:d,:s,'untrusted',true,:e,
+                :media,'original',NULL,NULL,:charset,:bytes
+            )
+            """,
+            {
+                "id": source_id,
+                "w": workspace,
+                "r": run_id,
+                "p": principal,
+                "d": digest_value,
+                "s": exact,
+                "e": now() + timedelta(hours=24),
+                "media": stored_media_type(declaration),
+                "charset": None if declaration.charset is None else declaration.charset.value,
+                "bytes": len(exact.encode("utf-8")),
+            },
+        )
+        event(
+            c,
+            {"id": run_id, "workspace_id": workspace},
+            "RUN_ACCEPTED",
+            {
+                "goal_digest": digest(envelope.model_dump(mode="json")),
+                "policy": POLICY,
+                "declared_media_type": stored_media_type(declaration),
+                "byte_size": len(exact.encode("utf-8")),
+                "channel": "user_paste",
+                "parser_id": None,
+            },
+            principal,
+        )
+        return run_id
+
+
 def locked_run(c: Connection, run_id: str, fence: int | None = None) -> dict[str, Any]:
     """Lock one run row. Callers lock workspace and membership only around a write."""
     run = one(c, "SELECT * FROM runs WHERE id=:id FOR UPDATE", {"id": run_id})
@@ -178,6 +345,7 @@ class Claim:
     previous_fence: int | None = None
     fence: int | None = None
     committed: bool = False
+    failure_detail: dict[str, Any] | None = None
 
 
 def fail_closed(c: Connection, run: dict[str, Any], code: str) -> None:
@@ -207,6 +375,10 @@ def quarantine(engine: Engine, claim: Claim, code: str) -> bool:
             run["lease_until"] is not None and run["lease_until"] > now()
         ):
             return False
+        if code in {"parser_limit_exceeded", "ingestion_incomplete", "canonicalization_failure"}:
+            detail = dict(claim.failure_detail or {})
+            detail["reason"] = code
+            event(c, run, "INGESTION_INCOMPLETE", detail)
         fail_closed(c, run, code)
     return True
 
@@ -492,64 +664,75 @@ def advance(engine: Engine, provider: Provider, claim: Claim) -> bool:
             )
             if original is None or original["digest"] != envelope.source_digest:
                 raise DomainError("source_integrity_failure")
-            representations, findings, complete = inspect(original["id"], original["content"])
-            for node in representations[1:]:
-                execute(
-                    c,
-                    """
-                    INSERT INTO content_nodes(
-                        id,workspace_id,run_id,origin,supplier,digest,content,
-                        trust,complete,expires_at
-                    ) VALUES(
-                        :id,:w,:r,'derived','bounded-decoder/1',:d,:s,
-                        'untrusted',:complete,:e
+            inspection_detail: dict[str, object] = {}
+            if is_staged_original(original):
+                audit: dict[str, object] = {}
+
+                def record(kind: str, detail: dict[str, object]) -> None:
+                    event(c, run, kind, detail)
+
+                try:
+                    representations, findings, complete = ingest_staged(
+                        c,
+                        run,
+                        envelope,
+                        original,
+                        audit,
+                        record,
                     )
-                    """,
-                    {
-                        "id": node.id,
-                        "w": run["workspace_id"],
-                        "r": run["id"],
-                        "d": content_digest(node.content),
-                        "s": node.content,
-                        "complete": complete,
-                        "e": original["expires_at"],
-                    },
-                )
-                execute(
-                    c,
-                    """
-                    INSERT INTO content_edges(
-                        id,workspace_id,run_id,parent_id,child_id,
-                        transform,version,lossy
-                    ) VALUES(:id,:w,:r,:p,:child,'base64','1',false)
-                    """,
-                    {
-                        "id": uid(),
-                        "w": run["workspace_id"],
-                        "r": run["id"],
-                        "p": node.parent,
-                        "child": node.id,
-                    },
-                )
-            for f in findings:
-                execute(
-                    c,
-                    """
-                    INSERT INTO findings(
-                        id,workspace_id,run_id,node_id,origin,family,explanation,
-                        start_offset,end_offset,version
-                    ) VALUES(
-                        :id,:w,:r,:node_id,'deterministic',:family,
-                        :explanation,:start,:end,'rules/1'
+                except ProcessingFailure as error:
+                    audit["reason"] = error.code
+                    claim.failure_detail = audit
+                    raise DomainError(error.code) from None
+                inspection_detail = {
+                    "source_id": original["id"],
+                    "declared_media_type": audit.get("declared_media_type"),
+                    "parser_id": audit.get("parser_id"),
+                    "parser_version": audit.get("parser_version"),
+                    "derived_count": audit.get("derived_count"),
+                }
+            elif not legacy_metadata_absent(original):
+                raise DomainError("source_integrity_failure")
+            else:
+                representations, findings, complete = inspect(original["id"], original["content"])
+                for node in representations[1:]:
+                    parent_id = node.parent
+                    if parent_id is None:
+                        raise DomainError("ingestion_incomplete")
+                    persist_recorded_base64(
+                        c,
+                        workspace_id=run["workspace_id"],
+                        run_id=run["id"],
+                        node_id=node.id,
+                        edge_id=uid(),
+                        parent_id=parent_id,
+                        content=node.content,
+                        complete=complete,
+                        expires_at=original["expires_at"],
                     )
-                    """,
-                    {"id": uid(), "w": run["workspace_id"], "r": run["id"], **f},
-                )
+                for found in findings:
+                    execute(
+                        c,
+                        """
+                        INSERT INTO findings(
+                            id,workspace_id,run_id,node_id,origin,family,explanation,
+                            start_offset,end_offset,version
+                        ) VALUES(
+                            :id,:w,:r,:node_id,'deterministic',:family,
+                            :explanation,:start,:end,'rules/1'
+                        )
+                        """,
+                        {"id": uid(), "w": run["workspace_id"], "r": run["id"], **found},
+                    )
             event(
                 c,
                 run,
                 "INSPECTION_COMPLETED" if complete else "INSPECTION_INCOMPLETE",
-                {"representations": len(representations), "findings": len(findings)},
+                {
+                    "representations": len(representations),
+                    "findings": len(findings),
+                    **inspection_detail,
+                },
             )
             execute(
                 c,

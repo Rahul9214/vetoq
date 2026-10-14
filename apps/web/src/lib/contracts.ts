@@ -69,6 +69,7 @@ export type RunDetail = RunSummary & {
     proposal: {
       tool: string;
       arguments: { workspace_id: string; title: string; body: string };
+      evidence_ids?: string[];
     };
     digest: string;
     verdict: "ALLOW" | "BLOCK" | "REVIEW" | null;
@@ -96,6 +97,20 @@ export type RunDetail = RunSummary & {
     trust: "untrusted";
     complete: boolean;
     expires_at: string;
+    declared_media_type: string | null;
+    representation_kind: string | null;
+    charset: string | null;
+    byte_size: number | null;
+    parser_id: string | null;
+    parser_version: string | null;
+  }>;
+  edges: Array<{
+    parent_id: string;
+    child_id: string;
+    transform: string;
+    version: string;
+    lossy: boolean;
+    transform_steps: Array<{ transform: string; version: string }> | null;
   }>;
 };
 

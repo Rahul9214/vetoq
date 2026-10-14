@@ -6,11 +6,10 @@ import { useEffect, useRef, useState } from "react";
 import { VetoqWordmark } from "@/components/vetoq-mark";
 
 const publicLinks = [
-  ["Product", "#execution-boundary"],
-  ["How it works", "#method"],
-  ["Security", "#action-guard"],
-  ["Architecture", "#principles"],
-  ["Demo", "#states"],
+  ["The gap", "#problem"],
+  ["How it works", "#execution-path"],
+  ["The boundary", "#boundary"],
+  ["Review", "#review"],
 ] as const;
 
 export function AppHeader({
@@ -95,12 +94,8 @@ export function AppHeader({
               <Link className="nav-sign-in" href="/sign-in">
                 Sign in
               </Link>
-              <Link
-                className="button button-primary nav-cta"
-                href="/sign-up"
-                aria-label="Start secure run"
-              >
-                Open VETOQ
+              <Link className="button button-primary nav-cta" href="/sign-in">
+                Open secure workbench
               </Link>
             </>
           )}
@@ -136,12 +131,8 @@ export function AppHeader({
               <Link href="/sign-in" onClick={() => setMenuOpen(false)}>
                 Sign in
               </Link>
-              <Link
-                href="/sign-up"
-                onClick={() => setMenuOpen(false)}
-                aria-label="Start secure run"
-              >
-                Open VETOQ
+              <Link href="/sign-in" onClick={() => setMenuOpen(false)}>
+                Open secure workbench
               </Link>
             </>
           ) : null}
