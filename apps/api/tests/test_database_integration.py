@@ -20,7 +20,7 @@ from sqlalchemy.exc import DBAPIError
 
 from vetoq.auth import principal as require_principal
 from vetoq.config import Settings
-from vetoq.contracts import Analysis, Proposal, Submission, TicketArguments
+from vetoq.contracts import Analysis, LegacySubmission, Proposal, TicketArguments
 from vetoq.db import engine_for, execute, one
 from vetoq.main import create_app
 from vetoq.providers.base import InferenceRequest, InferenceResult, Provider, ProviderError
@@ -139,8 +139,8 @@ def provision(database: Engine, principal: str) -> tuple[UUID, UUID]:
     return workspace_a, workspace_b
 
 
-def submission(workspace: UUID) -> Submission:
-    return Submission(
+def submission(workspace: UUID) -> LegacySubmission:
+    return LegacySubmission(
         workspace_id=workspace,
         template="support-triage/1",
         goal="Review this support email and create one ticket in workspace A.",
