@@ -1,7 +1,7 @@
 import base64
 import os
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from threading import Barrier, Event, Thread
 from typing import Any
 from uuid import UUID, uuid4
@@ -18,13 +18,14 @@ from pydantic import SecretStr
 from sqlalchemy import Engine, text
 from sqlalchemy.exc import DBAPIError
 
+from vetoq import workflow
 from vetoq.auth import principal as require_principal
 from vetoq.config import Settings
 from vetoq.contracts import Analysis, LegacySubmission, Proposal, TicketArguments
 from vetoq.db import engine_for, execute, one
 from vetoq.main import create_app
 from vetoq.providers.base import InferenceRequest, InferenceResult, Provider, ProviderError
-from vetoq.routes import visible_run
+from vetoq.visibility import visible_run
 from vetoq.workflow import DomainError, run_worker, submit, tick
 
 DATABASE_URL = os.environ.get("VETOQ_TEST_DATABASE_URL")
@@ -535,7 +536,21 @@ def test_verified_but_unprovisioned_identity_gets_no_authority(database: Engine)
     assert body["workspaces"] == []
 
 
-def awaiting_review(database: Engine) -> dict[str, str]:
+def awaiting_review(
+    database: Engine,
+    *,
+    monkeypatch: pytest.MonkeyPatch | None = None,
+    authorize_clock_lag: timedelta | None = None,
+) -> dict[str, str]:
+    """Open a review through the production workflow.
+
+    `authorize_clock_lag` runs the authorizing tick with the workflow clock
+    (`vetoq.workflow.now`, the module's own seam) set that far in the past. The
+    production code then creates the review through its normal INSERT with an
+    `expires_at` that is already behind the database clock. Nothing updates the
+    review and no trigger is touched.
+    """
+
     owner = "user_" + uuid4().hex
     reviewer = "user_" + uuid4().hex
     workspace, _ = provision(database, owner)
@@ -555,7 +570,14 @@ def awaiting_review(database: Engine) -> dict[str, str]:
     )
     run_id = submit(database, owner, suspicious, "review-" + uuid4().hex)
     assert tick(database, TicketProvider(workspace))
-    assert tick(database, TicketProvider(workspace))
+    if authorize_clock_lag is None:
+        assert tick(database, TicketProvider(workspace))
+    else:
+        assert monkeypatch is not None
+        real_now = workflow.now
+        with monkeypatch.context() as patch:
+            patch.setattr(workflow, "now", lambda: real_now() - authorize_clock_lag)
+            assert tick(database, TicketProvider(workspace))
     with database.connect() as connection:
         review = one(
             connection, "SELECT id,digest,decision FROM reviews WHERE run_id=:run", {"run": run_id}
@@ -684,14 +706,22 @@ def test_inactive_and_non_member_reviewers_are_refused(database: Engine) -> None
     assert decide(opened["reviewer"], opened["review_id"], opened["digest"])[0] == 404
 
 
-def test_expired_review_cannot_authorize_and_run_expires(database: Engine) -> None:
-    opened = awaiting_review(database)
-    with database.begin() as connection:
-        execute(
+def test_expired_review_cannot_authorize_and_run_expires(
+    database: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `reviews.expires_at` is immutable, so the review is never aged by an UPDATE.
+    # The authorizing tick runs with the workflow clock 15 minutes behind, so the
+    # production INSERT writes a review whose 10 minute window already closed.
+    opened = awaiting_review(
+        database, monkeypatch=monkeypatch, authorize_clock_lag=timedelta(minutes=15)
+    )
+    with database.connect() as connection:
+        window = one(
             connection,
-            "UPDATE reviews SET expires_at=now()-interval '1 minute' WHERE id=:id",
+            "SELECT expires_at<=now() AS closed, decision FROM reviews WHERE id=:id",
             {"id": opened["review_id"]},
         )
+    assert window == {"closed": True, "decision": None}
     assert decide(opened["reviewer"], opened["review_id"], opened["digest"]) == (
         409,
         "review_stale",
