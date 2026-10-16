@@ -6,15 +6,18 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from threading import Event
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import ValidationError
 from sqlalchemy import Connection, Engine
+from sqlalchemy.exc import DBAPIError
 
 from vetoq.action_guard import GuardInput, guard
 from vetoq.contracts import (
+    GUARD_VERSION,
     POLICY,
     TERMINAL,
+    Analysis,
     DeclaredSubmission,
     GoalLock,
     LegacySubmission,
@@ -35,9 +38,18 @@ from vetoq.ingestion.pipeline import (
 )
 from vetoq.ingestion.registry import AdapterRegistry, production_registry
 from vetoq.inspection import content_digest, inspect
-from vetoq.providers.base import InferenceRequest, Provider, ProviderError
+from vetoq.lineage_failure import (
+    DECISION_WRITE,
+    EXECUTION_LINK,
+    PRODUCER_WRITE,
+    is_lineage_integrity_failure,
+)
+from vetoq.providers.base import InferenceRequest, InferenceResult, Provider, ProviderError
 
 logger = logging.getLogger("vetoq.worker")
+
+PRODUCER_FIELD_LIMIT = 120
+PRODUCER_RESPONSE_ID_LIMIT = 200
 
 
 def now() -> datetime:
@@ -383,6 +395,59 @@ def quarantine(engine: Engine, claim: Claim, code: str) -> bool:
     return True
 
 
+def record_guard_decision(
+    c: Connection,
+    run: dict[str, Any],
+    action: dict[str, Any],
+    verdict: str,
+    reasons: list[str],
+    policy_revision: str,
+    review_id: str | None,
+) -> str:
+    """Append one structural record of a guard evaluation, in the caller's transaction.
+
+    The record describes what the deterministic guard returned. Nothing reads it back to
+    decide anything. The ordinal continues the action's own history under the action row
+    lock that `authorize` already holds. Any failure rolls the whole supporting transaction
+    back. A rejected lineage integrity rule is `lineage_write_failure`; any other database
+    failure propagates unchanged.
+    """
+
+    decision_id = uid()
+    try:
+        execute(
+            c,
+            """
+            INSERT INTO guard_decisions(
+                id,workspace_id,run_id,action_id,ordinal,verdict,reasons,action_digest,
+                policy_revision_observed,guard_version,review_id
+            )
+            SELECT :id,:w,:r,:a,COALESCE(MAX(ordinal),0)+1,:v,CAST(:reasons AS text[]),:d,
+                :p,:g,:review
+            FROM guard_decisions WHERE workspace_id=:w AND run_id=:r AND action_id=:a
+            """,
+            {
+                "id": decision_id,
+                "w": run["workspace_id"],
+                "r": run["id"],
+                "a": action["id"],
+                "v": verdict,
+                "reasons": reasons,
+                "d": action["digest"],
+                "p": policy_revision,
+                "g": GUARD_VERSION,
+                "review": review_id,
+            },
+        )
+    except DBAPIError as error:
+        # Only a lineage integrity rule rejecting this write is a lineage failure. A timeout,
+        # cancellation, lock failure, or lost connection keeps its general classification.
+        if is_lineage_integrity_failure(error, DECISION_WRITE):
+            raise DomainError("lineage_write_failure") from None
+        raise
+    return decision_id
+
+
 def authorize(c: Connection, run: dict[str, Any]) -> None:
     action = one(
         c,
@@ -451,6 +516,36 @@ def authorize(c: Connection, run: dict[str, Any]) -> None:
             ),
         )
     )
+    # Structural lineage shares this transaction with the state transition it supports.
+    # A new review is created first so the REVIEW decision can reference it. A decision
+    # after an approval references that same review.
+    review_id = None if review is None else str(review["id"])
+    if decision.verdict == "REVIEW" and review is None:
+        review_id = uid()
+        execute(
+            c,
+            """
+            INSERT INTO reviews(id,workspace_id,run_id,action_id,digest,expires_at,requested_at)
+            VALUES(:id,:w,:r,:a,:d,:e,now())
+            """,
+            {
+                "id": review_id,
+                "w": run["workspace_id"],
+                "r": run["id"],
+                "a": action["id"],
+                "d": action["digest"],
+                "e": min(envelope.expires_at, now() + timedelta(minutes=10)),
+            },
+        )
+    decision_id = record_guard_decision(
+        c,
+        run,
+        action,
+        decision.verdict,
+        decision.reasons,
+        workspace["policy_revision"] if workspace else "",
+        review_id,
+    )
     execute(
         c,
         "UPDATE actions SET verdict=:v,reasons=CAST(:reasons AS jsonb) WHERE id=:a",
@@ -463,22 +558,6 @@ def authorize(c: Connection, run: dict[str, Any]) -> None:
         {"action_id": action["id"], "digest": action["digest"], "reasons": decision.reasons},
     )
     if decision.verdict == "REVIEW":
-        if review is None:
-            execute(
-                c,
-                """
-                INSERT INTO reviews(id,workspace_id,run_id,action_id,digest,expires_at)
-                VALUES(:id,:w,:r,:a,:d,:e)
-                """,
-                {
-                    "id": uid(),
-                    "w": run["workspace_id"],
-                    "r": run["id"],
-                    "a": action["id"],
-                    "d": action["digest"],
-                    "e": min(envelope.expires_at, now() + timedelta(minutes=10)),
-                },
-            )
         execute(
             c,
             "UPDATE runs SET state='AWAITING_REVIEW',lease_until=NULL WHERE id=:r",
@@ -512,23 +591,36 @@ def authorize(c: Connection, run: dict[str, Any]) -> None:
             "body": proposal.arguments.body,
         },
     )
-    execute(
-        c,
-        """
-        INSERT INTO executions(id,workspace_id,run_id,action_id,ticket_id,digest)
-        VALUES(:id,:w,:r,:a,:t,:d)
-        """,
-        {
-            "id": uid(),
-            "w": run["workspace_id"],
-            "r": run["id"],
-            "a": action["id"],
-            "t": ticket_id,
-            "d": action["digest"],
-        },
-    )
+    try:
+        execute(
+            c,
+            """
+            INSERT INTO executions(id,workspace_id,run_id,action_id,ticket_id,digest,
+                guard_decision_id)
+            VALUES(:id,:w,:r,:a,:t,:d,:decision)
+            """,
+            {
+                "id": uid(),
+                "w": run["workspace_id"],
+                "r": run["id"],
+                "a": action["id"],
+                "t": ticket_id,
+                "d": action["digest"],
+                "decision": decision_id,
+            },
+        )
+    except DBAPIError as error:
+        # Only a rejected authorization link is a lineage failure. Any other execution
+        # insert failure keeps its existing, general classification.
+        if is_lineage_integrity_failure(error, EXECUTION_LINK):
+            raise DomainError("lineage_write_failure") from None
+        raise
     if review:
-        execute(c, "UPDATE reviews SET consumed=true WHERE id=:id", {"id": review["id"]})
+        execute(
+            c,
+            "UPDATE reviews SET consumed=true,consumed_at=now() WHERE id=:id",
+            {"id": review["id"]},
+        )
     execute(
         c,
         "UPDATE runs SET writes=writes+1,state='VERIFYING',lease_until=NULL WHERE id=:r",
@@ -560,6 +652,103 @@ def verify(c: Connection, run: dict[str, Any]) -> None:
     execute(c, "UPDATE executions SET verified_at=now() WHERE id=:id", {"id": receipt["id"]})
     execute(c, "UPDATE runs SET state='COMPLETED',lease_until=NULL WHERE id=:r", {"r": run["id"]})
     event(c, run, "OUTCOME_VERIFIED", {"ticket_id": receipt["ticket_id"]})
+
+
+def canonical_evidence_ids(values: object) -> list[str] | None:
+    """Return the ids as canonical lowercase UUID strings, or None if they are malformed.
+
+    The list is checked, never rewritten: duplicates are tolerated and order is kept.
+    """
+
+    if not isinstance(values, list) or not 1 <= len(values) <= BUDGETS.proposal_evidence_ids:
+        return None
+    ids: list[str] = []
+    for value in values:
+        candidate = str(value)
+        try:
+            if str(UUID(candidate)) != candidate:
+                return None
+        except ValueError:
+            return None
+        ids.append(candidate)
+    return ids
+
+
+def resolvable_nodes(c: Connection, run: dict[str, Any], ids: list[str]) -> set[str]:
+    found = rows(
+        c,
+        """
+        SELECT id FROM content_nodes
+        WHERE workspace_id=:w AND run_id=:r AND id = ANY(CAST(:ids AS text[]))
+        """,
+        {"w": run["workspace_id"], "r": run["id"], "ids": sorted(set(ids))},
+    )
+    return {str(row["id"]) for row in found}
+
+
+def validate_proposal_evidence(c: Connection, run: dict[str, Any], proposal: Proposal) -> None:
+    """Proposal evidence must name one to sixteen nodes of this workspace and run."""
+
+    ids = canonical_evidence_ids(proposal.evidence_ids)
+    if ids is None or not set(ids).issubset(resolvable_nodes(c, run, ids)):
+        raise DomainError("invalid_model_evidence")
+
+
+def validated_finding_offsets(
+    c: Connection, run: dict[str, Any], analysis: Analysis, supplied: dict[str, str]
+) -> list[int]:
+    """Resolve every model finding to a supplied node of this run and locate its quote.
+
+    A malformed finding is malformed model evidence. It is neither persisted nor turned
+    into a policy BLOCK.
+    """
+
+    ids = [str(finding.evidence_id) for finding in analysis.findings]
+    if ids:
+        known = resolvable_nodes(c, run, ids)
+        if not set(ids).issubset(known) or not set(ids).issubset(supplied):
+            raise DomainError("invalid_model_evidence")
+    offsets: list[int] = []
+    for finding in analysis.findings:
+        start = supplied[str(finding.evidence_id)].find(finding.quote)
+        if start < 0:
+            raise DomainError("invalid_model_evidence")
+        offsets.append(start)
+    return offsets
+
+
+def producer_provenance(run_id: str, result: InferenceResult) -> dict[str, str | None]:
+    """Producer facts for one new action, taken from the exact result that produced it.
+
+    The provider, requested model, and prompt version are required. A missing or
+    malformed one fails closed. The response id is optional: an empty or oversize id is
+    stored as NULL, never as a meaningless identifier, and never truncated. Discarding a
+    non-empty oversize id does not fail the run. It logs one warning that carries only the
+    run id, provider, and a stable reason, never the discarded value.
+    """
+
+    required = (result.provider, result.model, result.prompt_version)
+    for value in required:
+        if (
+            not isinstance(value, str)
+            or value != value.strip()
+            or not 1 <= len(value) <= PRODUCER_FIELD_LIMIT
+        ):
+            raise DomainError("lineage_write_failure")
+    response_id = result.request_id.strip() if isinstance(result.request_id, str) else ""
+    if len(response_id) > PRODUCER_RESPONSE_ID_LIMIT:
+        logger.warning(
+            "producer_response_id_discarded run_id=%s provider=%s reason=%s",
+            run_id,
+            result.provider,
+            "response_id_too_long",
+        )
+    return {
+        "provider": result.provider,
+        "model": result.model,
+        "prompt_version": result.prompt_version,
+        "response_id": response_id if 1 <= len(response_id) <= PRODUCER_RESPONSE_ID_LIMIT else None,
+    }
 
 
 def advance(engine: Engine, provider: Provider, claim: Claim) -> bool:
@@ -832,14 +1021,19 @@ def advance(engine: Engine, provider: Provider, claim: Claim) -> bool:
         if current is None or current["cancelled"] or current["state"] != "PROPOSING":
             return True
         analysis = result.analysis
+        # Every model-produced reference is validated before anything is persisted. A
+        # failure raises inside this transaction, so no finding, analysis, action, or
+        # decision from the rejected result survives, and nothing reaches the guard.
+        if analysis.proposal is not None:
+            validate_proposal_evidence(c, run, analysis.proposal)
+        offsets = validated_finding_offsets(
+            c, run, analysis, {s["id"]: s["content"] for s in sources}
+        )
+        producer = producer_provenance(run["id"], result) if analysis.proposal is not None else None
         metadata = asdict(result)
         metadata.pop("analysis")
         event(c, current, "MODEL_COMPLETED", metadata)
-        for finding in analysis.findings:
-            source = next(s["content"] for s in sources if s["id"] == str(finding.evidence_id))
-            start = source.find(finding.quote)
-            if start < 0:
-                raise DomainError("invalid_model_evidence")
+        for finding, start in zip(analysis.findings, offsets, strict=True):
             execute(
                 c,
                 """
@@ -883,20 +1077,37 @@ def advance(engine: Engine, provider: Provider, claim: Claim) -> bool:
             )
             event(c, current, "NO_ACTION", {})
         else:
-            execute(
-                c,
-                """
-                INSERT INTO actions(id,workspace_id,run_id,proposal,digest)
-                VALUES(:id,:w,:r,CAST(:p AS jsonb),:d)
-                """,
-                {
-                    "id": uid(),
-                    "w": run["workspace_id"],
-                    "r": run["id"],
-                    "p": analysis.proposal.model_dump_json(),
-                    "d": action_digest(run["id"], envelope, analysis.proposal),
-                },
-            )
+            if producer is None:
+                raise DomainError("lineage_write_failure")
+            try:
+                execute(
+                    c,
+                    """
+                    INSERT INTO actions(
+                        id,workspace_id,run_id,proposal,digest,
+                        producer_provider,producer_model,producer_prompt_version,
+                        producer_response_id
+                    ) VALUES(
+                        :id,:w,:r,CAST(:p AS jsonb),:d,
+                        :provider,:model,:prompt_version,:response_id
+                    )
+                    """,
+                    {
+                        "id": uid(),
+                        "w": run["workspace_id"],
+                        "r": run["id"],
+                        "p": analysis.proposal.model_dump_json(),
+                        "d": action_digest(run["id"], envelope, analysis.proposal),
+                        **producer,
+                    },
+                )
+            except DBAPIError as error:
+                # The application validated the producer trio first. A database producer
+                # check that still rejects it is a required-lineage failure. Anything else
+                # about this insert keeps its general classification.
+                if is_lineage_integrity_failure(error, PRODUCER_WRITE):
+                    raise DomainError("lineage_write_failure") from None
+                raise
             execute(
                 c,
                 """

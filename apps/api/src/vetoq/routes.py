@@ -1,7 +1,7 @@
 """Authenticated, workspace-scoped HTTP API."""
 
 from datetime import datetime
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, NoReturn, cast
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from sqlalchemy import Connection, Engine
@@ -10,6 +10,7 @@ from vetoq.auth import principal
 from vetoq.contracts import POLICY, TERMINAL, DeclaredSubmission, ReviewDecision, Submission
 from vetoq.db import execute, one, rows
 from vetoq.ingestion.contracts import TransformStep, recorded_transform_steps
+from vetoq.visibility import visible_run
 from vetoq.workflow import (
     DomainError,
     accept_declared_submission,
@@ -29,7 +30,7 @@ def engine(request: Request) -> Engine:
     return cast(Engine, configured)
 
 
-def run_edges(connection: Connection, run_id: str) -> list[dict[str, Any]]:
+def run_edges(connection: Connection, workspace_id: str, run_id: str) -> list[dict[str, Any]]:
     """Return summary edges plus the recorded step chain.
 
     A null ``transform_step_count`` stays ``transform_steps: null``. The
@@ -44,10 +45,10 @@ def run_edges(connection: Connection, run_id: str) -> list[dict[str, Any]]:
                s.transform AS step_transform, s.version AS step_version
         FROM content_edges e
         LEFT JOIN content_edge_steps s ON s.edge_id = e.id
-        WHERE e.run_id = :run
+        WHERE e.workspace_id = :workspace AND e.run_id = :run
         ORDER BY e.parent_id, e.child_id, s.step_index
         """,
-        {"run": run_id},
+        {"workspace": workspace_id, "run": run_id},
     )
     ordered: list[str] = []
     grouped: dict[str, dict[str, Any]] = {}
@@ -87,23 +88,8 @@ def run_edges(connection: Connection, run_id: str) -> list[dict[str, Any]]:
     return edges
 
 
-def fail(error: DomainError) -> None:
+def fail(error: DomainError) -> NoReturn:
     raise HTTPException(error.status, error.code) from None
-
-
-def visible_run(connection: Any, run_id: str, actor: str) -> dict[str, Any]:
-    run = one(
-        connection,
-        """
-        SELECT r.* FROM runs r
-        JOIN memberships m ON m.workspace_id=r.workspace_id
-        WHERE r.id=:id AND m.principal=:principal AND m.active
-        """,
-        {"id": run_id, "principal": actor},
-    )
-    if run is None:
-        raise DomainError("not_found", 404)
-    return run
 
 
 @router.get("/me")
@@ -206,31 +192,36 @@ def get_run(run_id: str, actor: Principal, request: Request) -> dict[str, Any]:
             run = visible_run(connection, run_id, actor)
         except DomainError as error:
             fail(error)
+        # The visible run is the trusted scope. Its workspace and id qualify every query.
+        scope = {"workspace": run["workspace_id"], "run": run["id"]}
         findings = rows(
             connection,
             """
             SELECT f.id,f.origin,f.family,f.explanation,f.start_offset,f.end_offset,
                    f.node_id,f.version
-            FROM findings f WHERE f.run_id=:run ORDER BY f.origin,f.id
+            FROM findings f
+            WHERE f.workspace_id=:workspace AND f.run_id=:run ORDER BY f.origin,f.id
             """,
-            {"run": run_id},
+            scope,
         )
         action = one(
             connection,
             """
             SELECT id,proposal,digest,verdict,reasons,created_at
-            FROM actions WHERE run_id=:run ORDER BY created_at DESC,id DESC LIMIT 1
+            FROM actions WHERE workspace_id=:workspace AND run_id=:run
+            ORDER BY created_at DESC,id DESC LIMIT 1
             """,
-            {"run": run_id},
+            scope,
         )
         review = (
             one(
                 connection,
                 """
                 SELECT id,digest,expires_at,decision,consumed
-                FROM reviews WHERE action_id=:action
+                FROM reviews
+                WHERE workspace_id=:workspace AND run_id=:run AND action_id=:action
                 """,
-                {"action": action["id"]},
+                {**scope, "action": action["id"]},
             )
             if action
             else None
@@ -248,9 +239,9 @@ def get_run(run_id: str, actor: Principal, request: Request) -> dict[str, Any]:
             """
             SELECT t.id,t.title,t.created_at,e.verified_at
             FROM tickets t LEFT JOIN executions e ON e.ticket_id=t.id
-            WHERE t.run_id=:run
+            WHERE t.workspace_id=:workspace AND t.run_id=:run
             """,
-            {"run": run_id},
+            scope,
         )
         sources = rows(
             connection,
@@ -258,11 +249,12 @@ def get_run(run_id: str, actor: Principal, request: Request) -> dict[str, Any]:
             SELECT id,origin,supplier,digest,trust,complete,created_at,expires_at,
                    declared_media_type,representation_kind,charset,byte_size,
                    parser_id,parser_version
-            FROM content_nodes WHERE run_id=:run ORDER BY created_at,id
+            FROM content_nodes WHERE workspace_id=:workspace AND run_id=:run
+            ORDER BY created_at,id
             """,
-            {"run": run_id},
+            scope,
         )
-        edges = run_edges(connection, run_id)
+        edges = run_edges(connection, str(run["workspace_id"]), str(run["id"]))
     return {
         "id": run["id"],
         "workspace_id": run["workspace_id"],
@@ -305,16 +297,17 @@ def get_events(
 ) -> dict[str, Any]:
     with engine(request).connect() as connection:
         try:
-            visible_run(connection, run_id, actor)
+            run = visible_run(connection, run_id, actor)
         except DomainError as error:
             fail(error)
         items = rows(
             connection,
             """
             SELECT sequence,actor,type,detail,created_at FROM audit_events
-            WHERE run_id=:run AND sequence>:after ORDER BY sequence LIMIT 100
+            WHERE workspace_id=:workspace AND run_id=:run AND sequence>:after
+            ORDER BY sequence LIMIT 100
             """,
-            {"run": run_id, "after": max(0, after)},
+            {"workspace": run["workspace_id"], "run": run["id"], "after": max(0, after)},
         )
     return {"items": items, "next_cursor": items[-1]["sequence"] if items else after}
 
@@ -330,7 +323,7 @@ def get_content(
     response.headers["Cache-Control"] = "no-store"
     with engine(request).connect() as connection:
         try:
-            visible_run(connection, run_id, actor)
+            run = visible_run(connection, run_id, actor)
         except DomainError as error:
             fail(error)
         item = one(
@@ -339,9 +332,9 @@ def get_content(
             SELECT id,origin,supplier,digest,content,trust,complete,expires_at,
                    declared_media_type,representation_kind,charset,byte_size,
                    parser_id,parser_version
-            FROM content_nodes WHERE run_id=:run AND id=:node
+            FROM content_nodes WHERE workspace_id=:workspace AND run_id=:run AND id=:node
             """,
-            {"run": run_id, "node": node_id},
+            {"workspace": run["workspace_id"], "run": run["id"], "node": node_id},
         )
         if item is None:
             raise HTTPException(404, "not_found")
@@ -434,7 +427,8 @@ def decide_review(
                 execute(
                     connection,
                     """
-                    UPDATE reviews SET decision=:decision,reviewer=:reviewer WHERE id=:review
+                    UPDATE reviews SET decision=:decision,reviewer=:reviewer,decided_at=now()
+                    WHERE id=:review
                     """,
                     {"decision": body.decision, "reviewer": actor, "review": review_id},
                 )
@@ -461,16 +455,26 @@ def decide_review(
 @router.get("/tickets/{ticket_id}")
 def get_ticket(ticket_id: str, actor: Principal, request: Request) -> dict[str, Any]:
     with engine(request).connect() as connection:
+        # A ticket is read through the run it belongs to, by the one canonical rule. There is
+        # no separate membership-only path, and every refusal is the same 404.
+        reference = one(
+            connection, "SELECT run_id FROM tickets WHERE id=:ticket", {"ticket": ticket_id}
+        )
+        if reference is None:
+            raise HTTPException(404, "not_found")
+        try:
+            run = visible_run(connection, str(reference["run_id"]), actor)
+        except DomainError as error:
+            fail(error)
         ticket = one(
             connection,
             """
             SELECT t.id,t.workspace_id,t.run_id,t.title,t.body,t.created_at,e.verified_at
             FROM tickets t
-            JOIN memberships m ON m.workspace_id=t.workspace_id
             LEFT JOIN executions e ON e.ticket_id=t.id
-            WHERE t.id=:ticket AND m.principal=:principal AND m.active
+            WHERE t.id=:ticket AND t.workspace_id=:workspace AND t.run_id=:run
             """,
-            {"ticket": ticket_id, "principal": actor},
+            {"ticket": ticket_id, "workspace": run["workspace_id"], "run": run["id"]},
         )
     if ticket is None:
         raise HTTPException(404, "not_found")

@@ -93,7 +93,7 @@ class GroqProvider:
                 analysis,
                 "groq",
                 self.settings.ai_model,
-                str(data.get("id", "")),
+                "" if data.get("id") is None else str(data["id"]),
                 int((time.monotonic() - started) * 1000),
                 PROMPT_VERSION,
             )
