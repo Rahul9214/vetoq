@@ -9,6 +9,7 @@ Production observability is not implemented as a platform. The registry row OBS-
 - Worker logs include the run id and a stable reason code.
 - `/health/live` and `/health/ready` report process and schema readiness.
 - Audit events record security decisions for a run.
+- A completed HTTP lineage read emits one `lineage_read_completed` key=value INFO event on the existing `vetoq.api` logger. Fields are correlation id, read kind, authorized run id, duration, capped set counts, truncation, and a bounded list of integrity codes. A 404 is a visibility miss and is not logged. Unexpected failures stay with the global exception handler. There is no metrics abstraction, collector, or dashboard. OBS-001 stays PARTIAL.
 
 ## Intended signals
 

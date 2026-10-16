@@ -18,12 +18,13 @@ from starlette.responses import JSONResponse
 from vetoq.auth import correlation
 from vetoq.config import Settings
 from vetoq.db import engine_for
+from vetoq.lineage_routes import router as lineage_router
 from vetoq.routes import router
 
 logger = logging.getLogger("vetoq.api")
 ERROR_CODE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 STATUS_CODES = {404: "not_found", 405: "method_not_allowed"}
-SCHEMA_REVISION = "0004_edge_steps"
+SCHEMA_REVISION = "0007_lineage_execution_lookup"
 
 
 def request_correlation(value: str | None) -> str:
@@ -72,6 +73,7 @@ def create_app(
     app.state.engine = engine_for(config) if config.database_url is not None else None
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=config.trusted_hosts)
     app.include_router(router)
+    app.include_router(lineage_router)
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next: RequestResponseEndpoint) -> Response:

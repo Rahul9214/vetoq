@@ -20,6 +20,8 @@ The deterministic Action Guard, the closed tool boundary, idempotency, fencing, 
 
 Provenance nodes and edges, findings, action digests, review records, execution receipts, read-back, and the sequenced audit log. Module 002 stores this in PostgreSQL. A cross-run lineage product and a tamper-proof external archive are not implemented.
 
+M004 extends this plane as run-scoped relational lineage in PostgreSQL, per [ADR 0004](adr/0004-run-scoped-relational-lineage.md) and [the Module 004 specification](modules/004-provenance-lineage.md). The relational writers, strict database enforcement `0006_lineage_enforcement`, the bounded read model, the three typed read-only lineage endpoints, the security/retention/query-plan/observability shield, and the run-scoped executions lookup index `0007_lineage_execution_lookup` are implemented. There is no lineage UI. PROV-001 and LINE-001 are IMPLEMENTED for their approved GREEN B sentences. It adds no graph database, cross-run graph, global graph, queue, event bus, vector store, or service. Lineage is evidence of what happened. It is never an input to the enforcement plane, and audit events stay chronological evidence and are not the structural store.
+
 ### Ingestion boundary
 
 [ADR 0003](adr/0003-declared-format-ingestion.md) and [the Module 003 specification](modules/003-universal-secure-ingestion.md) add a declared-format adapter boundary in front of this plane. The ingestion kernel defines that boundary. All five contracted adapters are registered. `POST /runs` validates with the adapter for the declared type, then the worker canonicalizes that staged original. A legacy original, whose ingestion metadata is null, remains one pasted string plus bounded Base64 derivation.

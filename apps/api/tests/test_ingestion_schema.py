@@ -38,11 +38,18 @@ M002_CLAIM = (API_ROOT / "migrations" / "versions" / "0002_worker_claim.py").rea
 
 def test_revision_chain_has_one_head() -> None:
     script = ScriptDirectory(str(API_ROOT / "migrations"))
-    assert script.get_heads() == ["0004_edge_steps"]
+    assert script.get_heads() == ["0007_lineage_execution_lookup"]
+    lookup = script.get_revision("0007_lineage_execution_lookup")
+    strict = script.get_revision("0006_lineage_enforcement")
+    lineage = script.get_revision("0005_provenance_lineage")
     current = script.get_revision("0004_edge_steps")
     revision = script.get_revision("0003_secure_ingestion")
     previous = script.get_revision("0002_worker_claim")
-    assert current is not None and revision is not None and previous is not None
+    assert lookup is not None and strict is not None and lineage is not None and current is not None
+    assert revision is not None and previous is not None
+    assert lookup.down_revision == "0006_lineage_enforcement"
+    assert strict.down_revision == "0005_provenance_lineage"
+    assert lineage.down_revision == "0004_edge_steps"
     assert current.down_revision == "0003_secure_ingestion"
     assert revision.down_revision == "0002_worker_claim"
     assert previous.down_revision == "0001_security_slice"
@@ -224,7 +231,7 @@ def test_fresh_database_migrates_from_base_to_ingestion_head() -> None:
                     WHERE table_name='content_edge_steps'
                     """
                 ).scalar_one_or_none()
-            assert version == "0004_edge_steps"
+            assert version == "0007_lineage_execution_lookup"
             assert {
                 "declared_media_type",
                 "representation_kind",

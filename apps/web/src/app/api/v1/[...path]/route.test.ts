@@ -266,3 +266,238 @@ describe("same-origin BFF", () => {
     expect(fetchMock.mock.calls[0]?.[1]?.body).toBe("{}");
   });
 });
+
+describe("same-origin BFF lineage passthrough", () => {
+  const runId = "0b0c3f0e-8a63-4e0e-9a55-6f0f5f3f8c11";
+  const nodeId = "6d1f6a52-0c47-4c5c-8a07-0d3a7f0b2e90";
+  const actionId = "a3a1d0f7-52a5-4f0b-b8a6-1c4f2f6e9d33";
+  const lineagePaths = [
+    ["runs", runId, "lineage"],
+    ["runs", runId, "lineage", "nodes", nodeId],
+    ["runs", runId, "lineage", "actions", actionId],
+  ];
+
+  beforeEach(() => {
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    fetchMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("forwards each lineage GET with the server-side token and correlation id", async () => {
+    signedIn();
+    for (const path of lineagePaths) {
+      fetchMock.mockResolvedValueOnce(Response.json({ ok: path.length }));
+      const response = await call("GET", path);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: path.length });
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(response.headers.get("content-type")).toBe("application/json");
+    }
+    expect(fetchMock.mock.calls.map(([target]) => String(target))).toEqual(
+      lineagePaths.map(
+        (path) => `http://127.0.0.1:18000/api/v1/${path.join("/")}`,
+      ),
+    );
+    for (const [, init] of fetchMock.mock.calls) {
+      const headers = new Headers(init?.headers);
+      expect(init?.method).toBe("GET");
+      expect(init?.body).toBeUndefined();
+      expect(init?.cache).toBe("no-store");
+      expect(headers.get("authorization")).toBe(`Bearer ${token}`);
+      expect(headers.get("x-request-id")).toMatch(/^[0-9a-f-]{36}$/);
+    }
+  });
+
+  it("never forwards a client-supplied workspace, cookie, or other header", async () => {
+    signedIn();
+    fetchMock.mockResolvedValue(Response.json({ ok: true }));
+    await call("GET", lineagePaths[0]!, {
+      headers: {
+        "x-workspace-id": "workspace-attacker",
+        cookie: "session=stolen",
+        authorization: "Bearer attacker",
+        "x-request-id": "attacker-chosen",
+      },
+    });
+    const headers = new Headers(fetchMock.mock.calls[0]![1]?.headers);
+    expect([...headers.keys()].sort()).toEqual([
+      "authorization",
+      "x-request-id",
+    ]);
+    expect(headers.get("authorization")).toBe(`Bearer ${token}`);
+    expect(headers.get("x-request-id")).not.toBe("attacker-chosen");
+  });
+
+  it("forwards the direction selector and passes an invalid one through as 422", async () => {
+    signedIn();
+    fetchMock.mockResolvedValueOnce(Response.json({ direction: "ancestors" }));
+    const ok = await call("GET", [...lineagePaths[1]!], {});
+    expect(ok.status).toBe(200);
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      `http://127.0.0.1:18000/api/v1/runs/${runId}/lineage/nodes/${nodeId}`,
+    );
+
+    const request = new NextRequest(
+      `http://localhost:3000/api/v1/runs/${runId}/lineage/nodes/${nodeId}?direction=ancestors`,
+    );
+    fetchMock.mockResolvedValueOnce(Response.json({ direction: "ancestors" }));
+    await GET(request, { params: Promise.resolve({ path: lineagePaths[1]! }) });
+    expect(String(fetchMock.mock.calls[1]![0])).toBe(
+      `http://127.0.0.1:18000/api/v1/runs/${runId}/lineage/nodes/${nodeId}?direction=ancestors`,
+    );
+
+    const invalid = new NextRequest(
+      `http://localhost:3000/api/v1/runs/${runId}/lineage/nodes/${nodeId}?direction=sideways`,
+    );
+    fetchMock.mockResolvedValueOnce(
+      Response.json(
+        {
+          code: "invalid_input",
+          message: "Request input is invalid.",
+          correlation_id: "c0ffee00-0000-4000-8000-000000000000",
+          retryable: false,
+        },
+        { status: 422 },
+      ),
+    );
+    const refused = await GET(invalid, {
+      params: Promise.resolve({ path: lineagePaths[1]! }),
+    });
+    expect(refused.status).toBe(422);
+    expect(((await refused.json()) as { code: string }).code).toBe(
+      "invalid_input",
+    );
+    expect(refused.headers.get("cache-control")).toBe("no-store");
+    expect(String(fetchMock.mock.calls[2]![0])).toContain("direction=sideways");
+  });
+
+  it("keeps the non-enumerating 404 and the API error body unchanged", async () => {
+    signedIn();
+    const upstreamBody = {
+      code: "not_found",
+      message: "Request could not be completed.",
+      correlation_id: "c0ffee00-0000-4000-8000-000000000001",
+      retryable: false,
+    };
+    for (const path of lineagePaths) {
+      fetchMock.mockResolvedValueOnce(
+        Response.json(upstreamBody, { status: 404 }),
+      );
+      const response = await call("GET", path);
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual(upstreamBody);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+    }
+  });
+
+  it("answers 401 without calling the API when signed out", async () => {
+    session.auth.mockResolvedValue({ userId: null, getToken: vi.fn() });
+    for (const path of lineagePaths) {
+      await expectContract(
+        await call("GET", path),
+        401,
+        "authentication_required",
+      );
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("applies its own no-store header whatever the upstream says", async () => {
+    signedIn();
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "cache-control": "public, max-age=600",
+        },
+      }),
+    );
+    const response = await call("GET", lineagePaths[0]!);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("maps an unreachable, slow, or non-JSON upstream to the safe shapes", async () => {
+    signedIn();
+    fetchMock.mockRejectedValueOnce(
+      new TypeError("connect ECONNREFUSED 10.0.0.9:5432"),
+    );
+    const unavailable = await expectContract(
+      await call("GET", lineagePaths[0]!),
+      503,
+      "api_unavailable",
+    );
+    expect(unavailable.retryable).toBe(true);
+    expect(JSON.stringify(unavailable)).not.toContain("ECONNREFUSED");
+    fetchMock.mockRejectedValueOnce(
+      new DOMException("The operation timed out.", "TimeoutError"),
+    );
+    await expectContract(
+      await call("GET", lineagePaths[1]!),
+      504,
+      "api_timeout",
+    );
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        "<html><pre>Traceback (most recent call last)</pre></html>",
+        {
+          status: 500,
+          headers: { "content-type": "text/html" },
+        },
+      ),
+    );
+    const html = await expectContract(
+      await call("GET", lineagePaths[2]!),
+      502,
+      "invalid_upstream_response",
+    );
+    expect(JSON.stringify(html)).not.toContain("Traceback");
+    fetchMock.mockResolvedValueOnce(
+      Response.json(
+        { code: "database_not_configured", retryable: true },
+        { status: 503 },
+      ),
+    );
+    const upstream503 = await call("GET", lineagePaths[0]!);
+    expect(upstream503.status).toBe(503);
+    expect(upstream503.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("rejects a malformed or entity-prefixed id before authentication", async () => {
+    for (const bad of ["content:abc", "a/b", "..", "a b", "%00"]) {
+      await expectContract(
+        await call("GET", ["runs", runId, "lineage", "nodes", bad]),
+        400,
+        "invalid_path",
+      );
+    }
+    expect(session.auth).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("forwards extra query parameters without adding a body or workspace header", async () => {
+    signedIn();
+    fetchMock.mockResolvedValue(Response.json({ ok: true }));
+    const request = new NextRequest(
+      `http://localhost:3000/api/v1/runs/${runId}/lineage?workspace_id=attacker&depth=99999&unlimited=true`,
+    );
+    const response = await GET(request, {
+      params: Promise.resolve({ path: lineagePaths[0]! }),
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    const [target, init] = fetchMock.mock.calls[0]!;
+    const forwarded = new URL(String(target));
+    expect(forwarded.searchParams.get("workspace_id")).toBe("attacker");
+    expect(forwarded.searchParams.get("depth")).toBe("99999");
+    expect(forwarded.searchParams.get("unlimited")).toBe("true");
+    expect(init?.body).toBeUndefined();
+    const headers = new Headers(init?.headers);
+    expect(headers.get("x-workspace-id")).toBeNull();
+  });
+});

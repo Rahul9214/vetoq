@@ -23,7 +23,7 @@ from vetoq.config import Settings
 from vetoq.contracts import Analysis, DeclaredSubmission, GoalLock, LegacySubmission
 from vetoq.db import engine_for, execute, one, rows
 from vetoq.ingestion.contracts import recorded_transform_steps
-from vetoq.ingestion.pipeline import derived_node_id, persist_recorded_base64
+from vetoq.ingestion.pipeline import derived_edge_id, derived_node_id, persist_recorded_base64
 from vetoq.ingestion.registry import new_registry
 from vetoq.inspection import DECODER_ID, DECODER_VERSION, content_digest
 from vetoq.main import create_app
@@ -481,6 +481,33 @@ def test_mismatched_persisted_child_fails_closed(database: Engine) -> None:
                 "expires": original["expires_at"],
                 "bytes": len(wrong.encode()),
             },
+        )
+        # 0005 rejects a derived node with no parent edge at commit, so the
+        # persisted-but-wrong child carries its recorded edge and step.
+        edge_id = derived_edge_id(run_id, original["id"], node_id)
+        execute(
+            connection,
+            """
+            INSERT INTO content_edges(
+                id,workspace_id,run_id,parent_id,child_id,
+                transform,version,lossy,transform_step_count
+            ) VALUES(:id,:workspace,:run,:parent,:child,'json-canonical','1',true,1)
+            """,
+            {
+                "id": edge_id,
+                "workspace": str(workspace),
+                "run": run_id,
+                "parent": original["id"],
+                "child": node_id,
+            },
+        )
+        execute(
+            connection,
+            """
+            INSERT INTO content_edge_steps(edge_id,step_index,transform,version)
+            VALUES(:edge,1,'json-canonical','1')
+            """,
+            {"edge": edge_id},
         )
     provider = QuietProvider()
     assert tick(database, provider)

@@ -20,7 +20,7 @@ Browser release tests do not use the development API on port 18000. `scripts/e2e
 ## Database order
 
 1. Start PostgreSQL with `pnpm db:up`.
-2. Apply migrations with `pnpm db:migrate` so the target database reaches `0004_edge_steps`.
+2. Apply migrations with `pnpm db:migrate` so the target database reaches `0007_lineage_execution_lookup`.
 3. Create `vetoq_test` separately when integration tests are required, migrate that database explicitly, then point `VETOQ_TEST_DATABASE_URL` at it.
 4. Provision a workspace membership for the Clerk subject. Do not invent a second reviewer unless a human asks for one.
 
@@ -40,7 +40,7 @@ Start API, worker, and web in separate terminals. `pnpm worker:once` is a single
 
 ## Rollback and recovery
 
-- Schema rollback is not automatic. `0002_worker_claim`, `0003_secure_ingestion`, and `0004_edge_steps` refuse downgrade. Restore a backup or add a forward migration.
+- Schema rollback is not automatic. `0002_worker_claim`, `0003_secure_ingestion`, `0004_edge_steps`, `0005_provenance_lineage`, `0006_lineage_enforcement`, and `0007_lineage_execution_lookup` refuse downgrade. Restore a backup or add a forward migration.
 - Application rollback must keep the code compatible with the applied revision.
 - Local Compose data lives in a named volume. Do not delete the volume to fix a configuration mistake.
 - A failed run is quarantined with a reason. It is not retried forever.

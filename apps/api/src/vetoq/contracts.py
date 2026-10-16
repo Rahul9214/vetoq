@@ -11,6 +11,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from vetoq.ingestion.limits import BUDGETS
 
 POLICY: Final = "support-triage/1"
+# Labels which deterministic Action Guard rules produced a recorded decision. It is a
+# version label only: not authority, a signature, an attestation, or a trust score.
+GUARD_VERSION: Final = "action-guard/1"
 TERMINAL = {"COMPLETED", "NO_ACTION", "BLOCKED", "FAILED", "CANCELLED", "EXPIRED"}
 FAMILIES = (
     "Instruction Override",

@@ -516,7 +516,7 @@ def test_fresh_test_and_development_schemas_match() -> None:
             signature = _signature(fresh)
             assert signature == _signature(test)
             assert signature == _signature(live)
-            assert signature[-1] == ("0004_edge_steps",)
+            assert signature[-1] == ("0007_lineage_execution_lookup",)
         finally:
             fresh.dispose()
             test.dispose()

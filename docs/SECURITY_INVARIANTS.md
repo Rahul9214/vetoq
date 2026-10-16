@@ -40,6 +40,7 @@ Consequences:
 - A derived representation is evidence under the original Goal Lock source. It is not another authority root.
 - A client assertion, including a claim that content was sanitized or classified, does not change `trust`. Server channel metadata does not grant authority.
 - Module 002 stores original pasted text and bounded derived text as `untrusted`. It does not store private chain-of-thought. M003 ingestion, when implemented, keeps that trust rule and does not treat an unsupported or incompletely parsed source as inspected.
+- Lineage describes what happened and never grants authority. Provenance and execution lineage records are never an input to the Goal Lock, policy, Action Guard, review eligibility, dispatcher, or a model call, and a guard-decision record cannot be read to decide a guard outcome. If required lineage cannot persist, the supporting transition and side effect do not commit. See [the Module 004 specification](modules/004-provenance-lineage.md) and [ADR 0004](adr/0004-run-scoped-relational-lineage.md).
 
 ## Action Guard
 
@@ -74,6 +75,7 @@ Consequences:
 - A principal reads and mutates only workspaces where membership is active.
 - Missing membership and missing objects both surface as not found where the route is non-enumerating.
 - Self-review is the deliberate exception: the originator receives a forbidden response after the prohibition is audited.
+- Clarification, IMPLEMENTED in M004 Slice D ([change record 0004](change-control/0004-active-workspace-visibility.md)): a read of a run, or of anything scoped to a run, requires an active membership and an active workspace and a matching workspace and run. Otherwise the response is a non-enumerating `404 not_found`. This covers run detail, events, content, and ticket read, through one canonical server-side helper (`vetoq/visibility.py`), and covers the three lineage endpoints (Slice E). The trusted run row supplies the workspace and run id for every later query, and a ticket is read through its run. `decide_review` and `cancel` are not changed by this clarification.
 
 ## AI providers
 

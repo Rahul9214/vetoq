@@ -259,7 +259,7 @@ The worker records provenance by inserting `transform_step_count` equal to the l
 
 The bound is `transform_steps_per_edge` = 4 in the one budget source. The database checks use that same maximum. Chain completeness is enforced at transaction commit. Node deletion cascades to the edge and then to its steps. Steps have no separate retention clock. Edge rows and step rows cannot be updated. Deletes remain available for retention.
 
-Readiness requires `0004_edge_steps`.
+Readiness required `0004_edge_steps` at M003 GREEN B. The current requirement is `0007_lineage_execution_lookup` (M004 Slice F1).
 
 ## Capability status
 

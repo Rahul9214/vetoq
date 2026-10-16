@@ -25,7 +25,7 @@ Then read README.md and docs/handoff.md. Older product, architecture, security, 
 
 ## Scope and ownership
 
-Modules 001 and 002 are authorized. Module 002 is the text-only security vertical slice recorded in `docs/modules/002-security-slice.md`; subsequent modules require separate human approval. Do not expand Module 002 into multimodal ingestion, external ticket integrations, dashboards, or other later scope. Material architecture/scope changes require consultation before implementation. Routine implementation choices inside approved scope do not require repeated permission.
+Module 001 is complete. Module 002 is complete: the text-only security vertical slice recorded in `docs/modules/002-security-slice.md`. Module 003 (universal secure ingestion) is complete at GREEN B as of 15 October 2026 and is the stable baseline; its specification is `docs/modules/003-universal-secure-ingestion.md`. Module 004 (provenance graph and execution lineage) is complete at GREEN B; its specification is `docs/modules/004-provenance-lineage.md`. Schema readiness is `0007_lineage_execution_lookup`. There is no lineage UI. Module 005 and later modules are not authorized and require separate human approval. Do not expand a module into dashboards, external ticket integrations, multimodal input, or other later scope. Material architecture/scope changes require consultation before implementation. Routine implementation choices inside approved scope do not require repeated permission.
 
 Git and GitHub are HUMAN CONTROLLED. Never initialize repositories, create/switch branches, stage, commit, push, pull, merge, rebase, reset, stash, alter remotes, create issues/PRs, or otherwise mutate Git state. Read-only status/diff/log/branch inspection is permitted; prefer GIT_OPTIONAL_LOCKS=0. Report suggested Conventional Commit groups only. Never automate the owner's lifecycle.
 
@@ -40,6 +40,7 @@ Git and GitHub are HUMAN CONTROLLED. Never initialize repositories, create/switc
 - Do not introduce unused dependencies, speculative abstractions, empty directories, dead code, or product placeholders that imply functioning security.
 - Use pnpm for JavaScript and uv for Python. Pin direct dependencies and commit reproducible lockfiles through the human workflow. No floating latest specifications.
 - No LangGraph, provider SDK, OCR, PDF/DOCX tools, Redis, vector store, Motion, or object storage in Module 002.
+- No graph database, Kafka, Redis, event bus, vector store, or new service in Module 004. Lineage is run-scoped relational data in PostgreSQL. It describes what happened and never grants authority.
 
 ## UX requirements
 
