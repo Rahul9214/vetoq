@@ -39,6 +39,9 @@ Routine bug fixes inside an approved module do not need a new ADR when they pres
 
 ## Records
 
-| Record                                                                  | Subject             | Registry effect in Slice A                       |
-| ----------------------------------------------------------------------- | ------------------- | ------------------------------------------------ |
-| [0001-ingest-001-wording.md](change-control/0001-ingest-001-wording.md) | INGEST-001 sentence | Applied at M003 GREEN B. The row is IMPLEMENTED. |
+| Record                                                                                    | Subject                 | Registry effect in Slice A                                                                                     |
+| ----------------------------------------------------------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------- |
+| [0001-ingest-001-wording.md](change-control/0001-ingest-001-wording.md)                   | INGEST-001 sentence     | Applied at M003 GREEN B. The row is IMPLEMENTED.                                                               |
+| [0002-prov-001-wording.md](change-control/0002-prov-001-wording.md)                       | PROV-001 sentence       | Applied at M004 GREEN B. The row is IMPLEMENTED for the approved sentence.                                     |
+| [0003-line-001-wording.md](change-control/0003-line-001-wording.md)                       | LINE-001 sentence       | Applied at M004 GREEN B. The row is IMPLEMENTED for the approved sentence.                                     |
+| [0004-active-workspace-visibility.md](change-control/0004-active-workspace-visibility.md) | Tenancy read visibility | Not a registry row. Approved clarification, implemented for the listed reads and the three lineage GET routes. |

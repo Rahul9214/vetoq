@@ -8,7 +8,11 @@ The historical ET AI Hackathon context is recorded in [product.md](docs/product.
 
 ## Current status
 
-**Module 002: first security vertical slice.** The runtime accepts a confirmed support-triage goal and synthetic/sanitized untrusted email text, preserves provenance, combines deterministic inspection with real Groq analysis, and sends an exact typed proposal through a provider-independent Action Guard. One authorized `tickets.create` persists and verifies a real PostgreSQL ticket; the same tool targeting another workspace is blocked before any write.
+**Module 002: first security vertical slice (complete).** The runtime accepts a confirmed support-triage goal and synthetic/sanitized untrusted email text, preserves provenance, combines deterministic inspection with real Groq analysis, and sends an exact typed proposal through a provider-independent Action Guard. One authorized `tickets.create` persists and verifies a real PostgreSQL ticket; the same tool targeting another workspace is blocked before any write.
+
+**Module 003 is GREEN B.** Adapter-governed ingestion of the five declared text formats is implemented; unsupported formats fail closed.
+
+**Module 004 is GREEN B.** Authenticated run-scoped bounded structural provenance and execution lineage are implemented in PostgreSQL. There is no lineage UI. PROV-001 and LINE-001 are implemented for their approved sentences. Do not start M005 from this README.
 
 Clerk supplies identity while PostgreSQL membership remains server-authoritative. The UI exposes run submission/history, provenance/findings, action status, exact review, and verified ticket outcome using actual API state. Multimodal ingestion, external tools, dashboards, public deployment, and statistically meaningful product evaluation are not implemented. No achieved F3/D3 level is claimed.
 
@@ -138,7 +142,7 @@ SQLAlchemy/Alembic own Module 002 persistence. LangGraph, object storage, classi
 
 ## Continue safely
 
-Start with [AGENTS.md](AGENTS.md), [the product contract](docs/PRODUCT_CONTRACT.md), [handoff](docs/handoff.md), and the active [Module 002 specification](docs/modules/002-security-slice.md). Later modules require separate approval. Engineering commands and environment boundaries are in [ENGINEERING_CONTEXT.md](docs/ENGINEERING_CONTEXT.md).
+Start with [AGENTS.md](AGENTS.md), [the product contract](docs/PRODUCT_CONTRACT.md), [handoff](docs/handoff.md), and the completed [Module 004 specification](docs/modules/004-provenance-lineage.md). Modules 002, 003, and 004 are the completed baselines. Later modules require separate approval. Engineering commands and environment boundaries are in [ENGINEERING_CONTEXT.md](docs/ENGINEERING_CONTEXT.md).
 
 Git/GitHub are human controlled. Coding agents never stage, commit, push, create/switch branches, or operate the repository lifecycle. They report suggested commit groups.
 
