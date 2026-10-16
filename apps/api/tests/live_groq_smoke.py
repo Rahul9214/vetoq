@@ -14,6 +14,7 @@ from pydantic import SecretStr
 from vetoq.config import Settings
 from vetoq.contracts import LegacySubmission
 from vetoq.db import engine_for, execute, one
+from vetoq.lineage_read import build_run_lineage
 from vetoq.providers.groq import GroqProvider
 from vetoq.workflow import submit, tick
 
@@ -88,7 +89,11 @@ def main() -> None:
             connection,
             """
             SELECT r.state,r.writes,r.analysis,a.verdict,t.id AS ticket_id,
-                   e.verified_at,(SELECT count(*) FROM tickets WHERE run_id=r.id) AS tickets
+                   e.verified_at,e.guard_decision_id,
+                   a.producer_provider,a.producer_model,a.producer_prompt_version,
+                   a.producer_response_id IS NOT NULL AS producer_response_id_present,
+                   length(a.producer_response_id) AS producer_response_id_length,
+                   (SELECT count(*) FROM tickets WHERE run_id=r.id) AS tickets
             FROM runs r
             LEFT JOIN actions a ON a.run_id=r.id
             LEFT JOIN tickets t ON t.run_id=r.id
@@ -97,9 +102,14 @@ def main() -> None:
             """,
             {"run": run_id},
         )
-    database.dispose()
     if evidence is None:
+        database.dispose()
         raise RuntimeError("live run disappeared")
+    lineage = build_run_lineage(database, principal, run_id)
+    database.dispose()
+    action = lineage.actions[0] if lineage.actions else None
+    response_length = evidence["producer_response_id_length"]
+    response_present = bool(evidence["producer_response_id_present"])
     output = {
         "state": evidence["state"],
         "writes": evidence["writes"],
@@ -109,9 +119,19 @@ def main() -> None:
         "verified": evidence["verified_at"] is not None,
         "provider": evidence["analysis"].get("provider") if evidence["analysis"] else None,
         "model": evidence["analysis"].get("model") if evidence["analysis"] else None,
+        "producer_provider": evidence["producer_provider"],
+        "producer_model": evidence["producer_model"],
+        "producer_prompt_version": evidence["producer_prompt_version"],
+        "producer_response_id_present": response_present,
+        "producer_response_id_normalized": (not response_present)
+        or (response_length is not None and 1 <= response_length <= 200),
+        "guard_decision_linked": evidence["guard_decision_id"] is not None,
+        "lineage_stage": None if action is None else action.stage,
+        "lineage_path_complete": None if action is None else action.path.complete,
+        "lineage_producer_state": (None if action is None else action.proposal.producer.state),
     }
     print(json.dumps(output, sort_keys=True))
-    if output != {
+    expected = {
         "state": "COMPLETED",
         "writes": 1,
         "verdict": "ALLOW",
@@ -120,7 +140,17 @@ def main() -> None:
         "verified": True,
         "provider": "groq",
         "model": "openai/gpt-oss-120b",
-    }:
+        "producer_provider": "groq",
+        "producer_model": "openai/gpt-oss-120b",
+        "producer_prompt_version": "support-analysis/1",
+        "producer_response_id_present": response_present,
+        "producer_response_id_normalized": True,
+        "guard_decision_linked": True,
+        "lineage_stage": "verified",
+        "lineage_path_complete": True,
+        "lineage_producer_state": "recorded",
+    }
+    if output != expected:
         raise RuntimeError("live Groq smoke did not complete the authorized ticket")
 
 
